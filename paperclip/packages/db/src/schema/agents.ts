@@ -5,6 +5,7 @@ import {
   text,
   integer,
   timestamp,
+  boolean,
   jsonb,
   index,
 } from "drizzle-orm/pg-core";
@@ -32,6 +33,17 @@ export const agents = pgTable(
     permissions: jsonb("permissions").$type<Record<string, unknown>>().notNull().default({}),
     lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    isProtected: boolean("is_protected").notNull().default(false),
+    hiredBy: uuid("hired_by").references((): AnyPgColumn => agents.id, { onDelete: "set null" }),
+    skills: jsonb("skills").$type<string[]>().notNull().default([]),
+    kbAccess: jsonb("kb_access")
+      .$type<{ read: string[]; write: string[]; search: string[] }>()
+      .notNull()
+      .default({ read: [], write: [], search: [] }),
+    modelPreference: jsonb("model_preference")
+      .$type<{ mode: string; [key: string]: unknown }>()
+      .notNull()
+      .default({ mode: "auto" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

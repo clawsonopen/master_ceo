@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, integer, timestamp, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, pgTable, uuid, text, integer, timestamp, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const companies = pgTable(
   "companies",
@@ -23,10 +24,17 @@ export const companies = pgTable(
     feedbackDataSharingConsentByUserId: text("feedback_data_sharing_consent_by_user_id"),
     feedbackDataSharingTermsVersion: text("feedback_data_sharing_terms_version"),
     brandColor: text("brand_color"),
+    companyType: text("company_type").notNull().default("regular"),
+    isDeletable: boolean("is_deletable").notNull().default(true),
+    parentCompanyId: uuid("parent_company_id").references((): AnyPgColumn => companies.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     issuePrefixUniqueIdx: uniqueIndex("companies_issue_prefix_idx").on(table.issuePrefix),
+    masterCompanyUniqueIdx: uniqueIndex("companies_master_unique_idx")
+      .on(table.companyType)
+      .where(sql`company_type = 'master'`),
+    parentCompanyIdx: index("companies_parent_company_idx").on(table.parentCompanyId),
   }),
 );
