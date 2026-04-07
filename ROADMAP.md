@@ -46,6 +46,29 @@
 - Cost Dashboard UI: quota bars, tier indicator, selection log
 - Manual model override option
 - 10 tests passing
+- Optional (future): after Phase 3B/3C, add company-level provider key overrides on top of global instance keys.
+
+### Phase 3 Decision Architecture Notes
+
+- Model Router is intentionally split into:
+  - Router Agent (AI decision + reasoning output)
+  - Router Enforcer (deterministic runtime safety checks)
+- Why:
+  - Avoid hardcoded model choice logic while still preventing unstable runtime behavior.
+  - Keep recommendations adaptive to changing benchmarks/providers.
+  - Guarantee safe execution when keys/quotas/policies change in real time.
+- Master CEO workflow:
+  - Combines Router Agent recommendations with Cost Research Agent updates.
+  - Applies strategic constraints (budget/risk/quality preference).
+  - Final execution still passes through Enforcer guardrails.
+- Parameter evolution policy:
+  - New routing parameters are proposal-driven and schema-validated.
+  - No direct arbitrary runtime parameter injection to production routing.
+  - Rollout path: proposal -> validation -> canary -> production.
+- Safety baseline (non-negotiable):
+  - Missing API key => block provider/model.
+  - Exhausted quota/rate-limit => fallback or fail-fast with reason.
+  - Policy/budget violation => deny execution with actionable feedback.
 
 ## Phase 4: Knowledge Base (4-5 days)
 

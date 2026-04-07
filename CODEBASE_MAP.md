@@ -802,3 +802,21 @@ Migration runner: `packages/db/src/migrate.ts` using `drizzle-orm/migrator`.
 ---
 
 *Document created: 2026-04-06 | Phase 1 (Codebase Understanding) | Zero code changes*
+
+## Planned Architecture Notes (Phase 3, Not Yet Implemented)
+
+This section records agreed design intent. It is not a statement of current implementation.
+
+- Model routing will be split into:
+  - Router Agent (AI reasoning and recommendation output)
+  - Router Enforcer (deterministic runtime safety checks)
+- Cost Research Agent will feed live provider/model/quota intelligence into routing decisions.
+- Master CEO will combine Router recommendations and research updates for strategic selection.
+- Safety checks remain mandatory at execution time:
+  - provider/model requires available API key
+  - exhausted quota/rate-limit triggers fallback or fail-fast with reason
+  - policy/budget violations block execution with actionable feedback
+- Parameter evolution path:
+  - proposal -> validation -> canary -> production
+- Optional future extension:
+  - company-level provider key overrides on top of global instance keys.

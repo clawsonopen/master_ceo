@@ -122,6 +122,56 @@ Add undeletable Master Company with protected agents and parent-child relationsh
 
 Users bring their own API keys. System intelligently routes every request to the best available free model, falling back through paid and local models with full cost awareness.
 
+Optional future extension:
+- After Phase 3B/3C, we may add "company override keys" so a sub-company can override specific provider keys while global instance keys remain the default.
+
+### Phase 3 Operating Model (Agreed Design)
+
+This phase uses a two-part architecture:
+
+1. Router Agent (AI reasoning layer)
+   - Reads task intent, capabilities, latency/cost constraints, and model metadata.
+   - Can reason over benchmark updates, provider docs, and internal research outputs.
+   - Produces a ranked recommendation with explicit reasons (quality, cost, quota, reliability).
+
+2. Router Enforcer (deterministic safety layer)
+   - Applies non-negotiable runtime checks before execution.
+   - Guarantees no run starts with missing API key, exhausted quota, or blocked policy.
+   - Performs fallback selection when recommended model is unavailable at runtime.
+
+Rationale:
+- We want adaptive intelligence without fragile runtime behavior.
+- AI reasoning should be dynamic; safety gates must remain deterministic.
+- This prevents "dev loop" failures and production incidents caused by ambiguous agent decisions.
+
+#### Responsibilities Split
+
+- Cost Research Agent:
+  - Continuously updates provider/model availability, quota signals, and market changes.
+  - Writes structured updates that Router Agent can consume.
+
+- Router Agent:
+  - Converts task requirements + research state into recommendation proposals.
+  - Explains "why this model now" to Master CEO (human-readable decision trace).
+
+- Master CEO:
+  - Reviews strategic recommendations and can set preference/policy constraints.
+
+- Router Enforcer:
+  - Executes only policy-valid recommendations.
+  - Emits clear feedback when blocked (e.g., missing provider key, quota exhausted, policy denied).
+
+#### Parameter Evolution (Self-Improving System)
+
+- Master CEO may propose new routing parameters, but arbitrary free-form parameters are not auto-applied.
+- New parameters must pass a schema/policy path:
+  1) proposal -> 2) validation -> 3) policy publish -> 4) canary rollout -> 5) production.
+- All routing inputs must be versioned (`schema_version`) for backward compatibility.
+- Dynamic intelligence is encouraged; runtime safety remains strict.
+
+Design principle:
+- Dynamic intelligence, deterministic safety.
+
 ### 3A: API Key Management
 
 1. Create api_keys table (see ARCHITECTURE.md schema)

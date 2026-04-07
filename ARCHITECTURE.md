@@ -75,7 +75,7 @@
 │  Model assignment per agent:                                  │
 │  • Each CEO picks models for their company's agents           │
 │  • Master CEO can override any company's model choice         │
-│  • ModelRouter handles actual selection within constraints     │
+│  • ModelRouter handles actual selection within constraints│
 └───────────────────────────┬──────────────────────────────────┘
                             │
 ┌───────────────────────────▼──────────────────────────────────┐
@@ -536,3 +536,43 @@ Step 5: Complete
 | AI Models | N/A | User's keys/local | $0 |
 | Media Storage | N/A | P2P, no cloud | $0 |
 | Total | | | $0-5/mo |
+
+
+## Phase 3 Decision Architecture (Router Agent + Enforcer)
+
+This project uses a two-part routing architecture to stay adaptive without becoming unstable.
+
+1. Router Agent (AI reasoning layer)
+- Interprets task intent and constraints (quality, latency, budget, required capabilities).
+- Can reason over benchmarks, provider docs, SDK/API updates, and Cost Research Agent outputs.
+- Produces ranked recommendations with explicit reasons.
+
+2. Router Enforcer (deterministic safety layer)
+- Applies non-negotiable runtime checks before execution.
+- Blocks unsafe choices (missing API key, exhausted quota, policy/budget violations).
+- Performs deterministic fallback when the recommended model cannot run.
+
+Why this split is required:
+- We want dynamic model intelligence, not brittle hardcoded selection logic.
+- We also need deterministic runtime safety so production behavior is predictable.
+- This prevents failure loops and gives clear user-facing reasons when a choice is blocked.
+
+### Master CEO Decision Loop
+
+- Cost Research Agent updates provider/model/quota state.
+- Router Agent generates task-level recommendation candidates.
+- Master CEO applies strategic preference (cost vs quality vs speed).
+- Enforcer validates and executes only policy-safe choices.
+
+### Parameter Evolution Policy (Self-Improving, Safe)
+
+- Master CEO can propose new routing parameters.
+- Arbitrary runtime parameters are not auto-applied.
+- New parameters follow: proposal -> schema validation -> policy publish -> canary -> production.
+- Routing input is versioned (`schema_version`) for compatibility.
+
+Optional future extension:
+- After Phase 3B/3C, add company-level provider key overrides while global instance keys remain default.
+
+Design principle:
+- Dynamic intelligence, deterministic safety.
