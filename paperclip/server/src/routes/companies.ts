@@ -1,5 +1,7 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
+import { companies } from "@paperclipai/db";
+import { and, eq, ne } from "drizzle-orm";
 import {
   DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION,
   companyPortabilityExportSchema,
@@ -12,7 +14,7 @@ import {
   updateCompanyBrandingSchema,
   updateCompanySchema,
 } from "@paperclipai/shared";
-import { badRequest, forbidden } from "../errors.js";
+import { badRequest, conflict, forbidden } from "../errors.js";
 import { validate } from "../middleware/validate.js";
 import {
   accessService,
@@ -46,6 +48,21 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       throw badRequest(`Invalid ${field} query value`);
     }
     return parsed;
+  }
+
+  async function getMasterCompany(excludeCompanyId?: string) {
+    return db
+      .select({
+        id: companies.id,
+        companyType: companies.companyType,
+      })
+      .from(companies)
+      .where(
+        excludeCompanyId
+          ? and(eq(companies.companyType, "master"), ne(companies.id, excludeCompanyId))
+          : eq(companies.companyType, "master"),
+      )
+      .then((rows) => rows[0] ?? null);
   }
 
   async function assertCanUpdateBranding(req: Request, companyId: string) {
@@ -262,7 +279,25 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     if (!(req.actor.source === "local_implicit" || req.actor.isInstanceAdmin)) {
       throw forbidden("Instance admin required");
     }
-    const company = await svc.create(req.body);
+    const requestedType = req.body.companyType ?? "regular";
+    let parentCompanyId = req.body.parentCompanyId ?? null;
+
+    if (requestedType === "master") {
+      const existingMaster = await getMasterCompany();
+      if (existingMaster) {
+        throw conflict("Only one master company can exist");
+      }
+      parentCompanyId = null;
+    } else if (!parentCompanyId) {
+      parentCompanyId = (await getMasterCompany())?.id ?? null;
+    }
+
+    const company = await svc.create({
+      ...req.body,
+      companyType: requestedType,
+      isDeletable: requestedType !== "master",
+      parentCompanyId,
+    });
     await access.ensureMembership(company.id, "user", req.actor.userId ?? "local-board", "owner", "active");
     await logActivity(db, {
       companyId: company.id,
@@ -314,6 +349,23 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     } else {
       assertBoard(req);
       body = updateCompanySchema.parse(req.body);
+
+      if (body.companyType && body.companyType !== existingCompany.companyType) {
+        if (existingCompany.companyType === "master") {
+          throw forbidden("Master company type cannot be changed");
+        }
+        if (body.companyType === "master") {
+          const existingMaster = await getMasterCompany(companyId);
+          if (existingMaster) {
+            throw conflict("Only one master company can exist");
+          }
+          body = { ...body, isDeletable: false, parentCompanyId: null };
+        }
+      }
+
+      if (existingCompany.companyType === "master" && body.parentCompanyId !== undefined && body.parentCompanyId !== null) {
+        throw forbidden("Master company cannot have a parent company");
+      }
 
       if (body.feedbackDataSharingEnabled === true && !existingCompany.feedbackDataSharingEnabled) {
         body = {
@@ -374,6 +426,14 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     assertBoard(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    const existingCompany = await svc.getById(companyId);
+    if (!existingCompany) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+    if (existingCompany.companyType === "master" || existingCompany.isDeletable === false) {
+      throw forbidden("Master company cannot be archived");
+    }
     const company = await svc.archive(companyId);
     if (!company) {
       res.status(404).json({ error: "Company not found" });
@@ -394,6 +454,17 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     assertBoard(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    const existingCompany = await svc.getById(companyId);
+    if (!existingCompany) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+    if (existingCompany.companyType === "master" || existingCompany.isDeletable === false) {
+      throw forbidden("Master company cannot be deleted");
+    }
+    if (existingCompany.status !== "archived") {
+      throw forbidden("Only archived companies can be deleted");
+    }
     const company = await svc.remove(companyId);
     if (!company) {
       res.status(404).json({ error: "Company not found" });

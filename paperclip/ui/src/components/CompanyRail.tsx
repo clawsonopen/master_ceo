@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Paperclip, Plus } from "lucide-react";
+import { Archive, Paperclip, Plus } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
 import {
   DndContext,
@@ -72,12 +72,14 @@ function SortableCompanyItem({
   isSelected,
   hasLiveAgents,
   hasUnreadInbox,
+  archived = false,
   onSelect,
 }: {
   company: Company;
   isSelected: boolean;
   hasLiveAgents: boolean;
   hasUnreadInbox: boolean;
+  archived?: boolean;
   onSelect: () => void;
 }) {
   const {
@@ -118,7 +120,11 @@ function SortableCompanyItem({
               )}
             />
             <div
-              className={cn("relative overflow-visible transition-transform duration-150", isDragging && "scale-105")}
+              className={cn(
+                "relative overflow-visible transition-transform duration-150",
+                isDragging && "scale-105",
+                archived && "grayscale opacity-60",
+              )}
             >
               <CompanyPatternIcon
                 companyName={company.name}
@@ -146,7 +152,7 @@ function SortableCompanyItem({
           </a>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>
-          <p>{company.name}</p>
+          <p>{archived ? `${company.name} (archived)` : company.name}</p>
         </TooltipContent>
       </Tooltip>
     </div>
@@ -162,6 +168,10 @@ export function CompanyRail() {
   const highlightedCompanyId = isInstanceRoute ? null : selectedCompanyId;
   const sidebarCompanies = useMemo(
     () => companies.filter((company) => company.status !== "archived"),
+    [companies],
+  );
+  const archivedCompanies = useMemo(
+    () => companies.filter((company) => company.status === "archived"),
     [companies],
   );
   const companyIds = useMemo(() => sidebarCompanies.map((company) => company.id), [sidebarCompanies]);
@@ -302,6 +312,35 @@ export function CompanyRail() {
             ))}
           </SortableContext>
         </DndContext>
+        {archivedCompanies.length > 0 && (
+          <>
+            <div className="mt-1 mb-1 w-8 h-px bg-border/80 mx-auto shrink-0" />
+            <div className="w-full px-2">
+              <div className="flex items-center justify-center gap-1 text-[10px] tracking-wide uppercase text-muted-foreground">
+                <Archive className="h-3 w-3" />
+                Archived
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-2 w-full mt-1">
+              {archivedCompanies.map((company) => (
+                <SortableCompanyItem
+                  key={company.id}
+                  company={company}
+                  isSelected={company.id === highlightedCompanyId}
+                  hasLiveAgents={false}
+                  hasUnreadInbox={false}
+                  archived
+                  onSelect={() => {
+                    setSelectedCompanyId(company.id);
+                    if (isInstanceRoute) {
+                      navigate(`/${company.issuePrefix}/dashboard`);
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Separator before add button */}

@@ -265,10 +265,23 @@ export function Companies() {
                   className="mt-4 flex items-center justify-between bg-destructive/5 border border-destructive/20 rounded-md px-4 py-3"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <p className="text-sm text-destructive font-medium">
-                    Delete this company and all its data? This cannot be undone.
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-sm text-destructive font-medium">
+                      This action is irreversible. Delete this company and all its data?
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Only archived companies can be deleted. We strongly recommend taking an export backup first.
+                    </p>
+                  </div>
                   <div className="flex items-center gap-2 ml-4 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                      onClick={() => setSelectedCompanyId(company.id)}
+                    >
+                      <a href="/company/export">Export backup</a>
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -281,9 +294,13 @@ export function Companies() {
                       variant="destructive"
                       size="sm"
                       onClick={() => deleteMutation.mutate(company.id)}
-                      disabled={deleteMutation.isPending}
+                      disabled={deleteMutation.isPending || company.status !== "archived"}
                     >
-                      {deleteMutation.isPending ? "Deleting…" : "Delete"}
+                      {deleteMutation.isPending
+                        ? "Deleting..."
+                        : company.status === "archived"
+                        ? "Delete forever"
+                        : "Archive first"}
                     </Button>
                   </div>
                 </div>
@@ -295,3 +312,4 @@ export function Companies() {
     </div>
   );
 }
+

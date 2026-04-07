@@ -330,6 +330,18 @@ export function agentRoutes(db: Db) {
     }
   }
 
+  async function assertCompanyNotArchived(companyId: string) {
+    const company = await db
+      .select({ status: companies.status })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .then((rows) => rows[0] ?? null);
+    if (!company) throw notFound("Company not found");
+    if (company.status === "archived") {
+      throw forbidden("Archived companies are read-only");
+    }
+  }
+
   function assertKnownAdapterType(type: string | null | undefined): string {
     const adapterType = typeof type === "string" ? type.trim() : "";
     if (!adapterType) {
@@ -1440,6 +1452,7 @@ export function agentRoutes(db: Db) {
   router.post("/companies/:companyId/agents", validate(createAgentSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    await assertCompanyNotArchived(companyId);
 
     if (req.actor.type === "agent") {
       assertBoard(req);
@@ -1834,6 +1847,18 @@ export function agentRoutes(db: Db) {
     }
 
     const patchData = { ...(req.body as Record<string, unknown>) };
+    if (hasOwn(patchData, "isProtected")) {
+      assertBoard(req);
+      const targetCompany = await db
+        .select({ companyType: companies.companyType })
+        .from(companies)
+        .where(eq(companies.id, existing.companyId))
+        .then((rows) => rows[0] ?? null);
+      const isMasterCeo = existing.role === "ceo" && targetCompany?.companyType === "master";
+      if (isMasterCeo) {
+        throw forbidden("Master CEO protection cannot be changed");
+      }
+    }
     const replaceAdapterConfig = patchData.replaceAdapterConfig === true;
     delete patchData.replaceAdapterConfig;
     if (hasOwn(patchData, "adapterConfig")) {
@@ -1951,6 +1976,7 @@ export function agentRoutes(db: Db) {
       res.status(404).json({ error: "Agent not found" });
       return;
     }
+    await assertCompanyNotArchived(agent.companyId);
 
     await heartbeat.cancelActiveForAgent(id);
 
@@ -1974,6 +2000,7 @@ export function agentRoutes(db: Db) {
       res.status(404).json({ error: "Agent not found" });
       return;
     }
+    await assertCompanyNotArchived(agent.companyId);
 
     await logActivity(db, {
       companyId: agent.companyId,
@@ -1990,6 +2017,15 @@ export function agentRoutes(db: Db) {
   router.post("/agents/:id/terminate", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    if (existing.isProtected) {
+      throw forbidden("Protected agents cannot be terminated");
+    }
+    await assertCompanyNotArchived(existing.companyId);
     const agent = await svc.terminate(id);
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
@@ -2013,6 +2049,14 @@ export function agentRoutes(db: Db) {
   router.delete("/agents/:id", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
+    const existing = await svc.getById(id);
+    if (!existing) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    if (existing.isProtected) {
+      throw forbidden("Protected agents cannot be deleted");
+    }
     const agent = await svc.remove(id);
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
@@ -2078,6 +2122,7 @@ export function agentRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, agent.companyId);
+    await assertCompanyNotArchived(agent.companyId);
 
     if (req.actor.type === "agent" && req.actor.agentId !== id) {
       res.status(403).json({ error: "Agent can only invoke itself" });
@@ -2128,6 +2173,7 @@ export function agentRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, agent.companyId);
+    await assertCompanyNotArchived(agent.companyId);
 
     if (req.actor.type === "agent" && req.actor.agentId !== id) {
       res.status(403).json({ error: "Agent can only invoke itself" });

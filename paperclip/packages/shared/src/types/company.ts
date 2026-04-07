@@ -5,6 +5,9 @@ export interface Company {
   name: string;
   description: string | null;
   status: CompanyStatus;
+  companyType: "master" | "regular";
+  isDeletable: boolean;
+  parentCompanyId: string | null;
   pauseReason: PauseReason | null;
   pausedAt: Date | null;
   issuePrefix: string;

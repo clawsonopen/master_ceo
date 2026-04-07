@@ -25,6 +25,9 @@ vi.mock("../services/index.js", () => ({
   agentService: () => ({
     getById: vi.fn(),
   }),
+  companyService: () => ({
+    getById: vi.fn(async () => ({ id: "company-1", status: "active" })),
+  }),
   documentService: () => ({
     getIssueDocumentPayload: vi.fn(async () => ({})),
   }),

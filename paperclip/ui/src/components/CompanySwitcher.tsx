@@ -27,6 +27,7 @@ function statusDotColor(status?: string): string {
 export function CompanySwitcher() {
   const { companies, selectedCompany, setSelectedCompanyId } = useCompany();
   const sidebarCompanies = companies.filter((company) => company.status !== "archived");
+  const archivedCompanies = companies.filter((company) => company.status === "archived");
 
   return (
     <DropdownMenu>
@@ -61,6 +62,22 @@ export function CompanySwitcher() {
         ))}
         {sidebarCompanies.length === 0 && (
           <DropdownMenuItem disabled>No companies</DropdownMenuItem>
+        )}
+        {archivedCompanies.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Archived</DropdownMenuLabel>
+            {archivedCompanies.map((company) => (
+              <DropdownMenuItem
+                key={company.id}
+                onClick={() => setSelectedCompanyId(company.id)}
+                className={company.id === selectedCompany?.id ? "bg-accent text-muted-foreground" : "text-muted-foreground"}
+              >
+                <span className={`h-2 w-2 rounded-full shrink-0 mr-2 ${statusDotColor(company.status)}`} />
+                <span className="truncate">{company.name}</span>
+              </DropdownMenuItem>
+            ))}
+          </>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>

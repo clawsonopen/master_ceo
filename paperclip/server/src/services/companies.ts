@@ -36,6 +36,11 @@ export function companyService(db: Db) {
     name: companies.name,
     description: companies.description,
     status: companies.status,
+    pauseReason: companies.pauseReason,
+    pausedAt: companies.pausedAt,
+    companyType: companies.companyType,
+    isDeletable: companies.isDeletable,
+    parentCompanyId: companies.parentCompanyId,
     issuePrefix: companies.issuePrefix,
     issueCounter: companies.issueCounter,
     budgetMonthlyCents: companies.budgetMonthlyCents,
@@ -154,7 +159,14 @@ export function companyService(db: Db) {
     list: async () => {
       const rows = await getCompanyQuery(db);
       const hydrated = await hydrateCompanySpend(rows);
-      return hydrated.map((row) => enrichCompany(row));
+      return hydrated
+        .map((row) => enrichCompany(row))
+        .sort((left, right) => {
+          if (left.companyType === right.companyType) {
+            return left.name.localeCompare(right.name);
+          }
+          return left.companyType === "master" ? -1 : 1;
+        });
     },
 
     getById: async (id: string) => {

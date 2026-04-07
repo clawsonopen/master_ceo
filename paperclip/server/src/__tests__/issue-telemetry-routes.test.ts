@@ -32,6 +32,9 @@ vi.mock("../services/index.js", () => ({
     hasPermission: vi.fn(),
   }),
   agentService: () => mockAgentService,
+  companyService: () => ({
+    getById: vi.fn(async () => ({ id: "company-1", status: "active" })),
+  }),
   documentService: () => ({}),
   executionWorkspaceService: () => ({}),
   feedbackService: () => ({}),

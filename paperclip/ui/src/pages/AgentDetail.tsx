@@ -653,6 +653,12 @@ export function AgentDetail() {
     enabled: canFetchAgent,
   });
   const resolvedCompanyId = agent?.companyId ?? selectedCompanyId;
+  const activeCompany = useMemo(
+    () => companies.find((company) => company.id === resolvedCompanyId) ?? null,
+    [companies, resolvedCompanyId],
+  );
+  const isArchivedCompany = activeCompany?.status === "archived";
+  const canTerminateAgent = Boolean(agent && !agent.isProtected && !isArchivedCompany);
   const canonicalAgentRef = agent ? agentRouteRef(agent) : routeAgentRef;
   const agentLookupRef = agent?.id ?? routeAgentRef;
   const resolvedAgentId = agent?.id ?? null;
@@ -926,20 +932,21 @@ export function AgentDetail() {
             variant="outline"
             size="sm"
             onClick={() => openNewIssue({ assigneeAgentId: agent.id })}
+            disabled={isArchivedCompany}
           >
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
             <span className="hidden sm:inline">Assign Task</span>
           </Button>
           <RunButton
             onClick={() => agentAction.mutate("invoke")}
-            disabled={agentAction.isPending || isPendingApproval}
+            disabled={agentAction.isPending || isPendingApproval || isArchivedCompany}
             label="Run Heartbeat"
           />
           <PauseResumeButton
             isPaused={agent.status === "paused"}
             onPause={() => agentAction.mutate("pause")}
             onResume={() => agentAction.mutate("resume")}
-            disabled={agentAction.isPending || isPendingApproval}
+            disabled={agentAction.isPending || isPendingApproval || isArchivedCompany}
           />
           <span className="hidden sm:inline"><StatusBadge status={agent.status} /></span>
           {mobileLiveRun && (
@@ -984,11 +991,16 @@ export function AgentDetail() {
                 Reset Sessions
               </button>
               <button
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
+                className={cn(
+                  "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded text-destructive",
+                  canTerminateAgent ? "hover:bg-accent/50" : "opacity-50 cursor-not-allowed",
+                )}
                 onClick={() => {
+                  if (!canTerminateAgent) return;
                   agentAction.mutate("terminate");
                   setMoreOpen(false);
                 }}
+                disabled={!canTerminateAgent}
               >
                 <Trash2 className="h-3 w-3" />
                 Terminate
@@ -1022,6 +1034,11 @@ export function AgentDetail() {
       {isPendingApproval && (
         <p className="text-sm text-amber-500">
           This agent is pending board approval and cannot be invoked yet.
+        </p>
+      )}
+      {isArchivedCompany && (
+        <p className="text-sm text-muted-foreground">
+          This company is archived. Agent operations are disabled until the company is restored.
         </p>
       )}
 
@@ -1540,6 +1557,7 @@ function ConfigurationTab({
   hideInstructionsFile?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const { companies } = useCompany();
   const { pushToast } = useToast();
   const [awaitingRefreshAfterSave, setAwaitingRefreshAfterSave] = useState(false);
   const lastAgentRef = useRef(agent);
@@ -1598,8 +1616,14 @@ function ConfigurationTab({
       : taskAssignSource === "agent_creator"
         ? "Enabled automatically while this agent can create new agents."
         : taskAssignSource === "explicit_grant"
-          ? "Enabled via explicit company permission grant."
+        ? "Enabled via explicit company permission grant."
           : "Disabled unless explicitly granted.";
+  const currentCompany = companies.find((company) => company.id === agent.companyId) ?? null;
+  const isMasterCompanyCeo = agent.role === "ceo" && currentCompany?.companyType === "master";
+  const isTerminatable = !agent.isProtected;
+  const updateTerminatable = (value: boolean) => {
+    updateAgent.mutate({ isProtected: !value });
+  };
 
   return (
     <div className="space-y-6">
@@ -1657,6 +1681,30 @@ function ConfigurationTab({
               disabled={updatePermissions.isPending || taskAssignLocked}
             />
           </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium mb-3">Lifecycle Controls</h3>
+        <div className="border border-border rounded-lg p-4 space-y-4">
+          <div className="flex items-center justify-between gap-4 text-sm">
+            <div className="space-y-1">
+              <div>Terminatable</div>
+              <p className="text-xs text-muted-foreground">
+                Prevent terminate when disabled.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={isTerminatable}
+              onCheckedChange={updateTerminatable}
+              disabled={isConfigSaving || isMasterCompanyCeo}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {isMasterCompanyCeo
+              ? "Master CEO is always protected and cannot be terminated."
+              : "Terminating is controlled by protection mode for this agent."}
+          </p>
         </div>
       </div>
     </div>

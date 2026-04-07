@@ -40,6 +40,7 @@ import { printStartupBanner } from "./startup-banner.js";
 import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-claim.js";
 import { maybePersistWorktreeRuntimePorts } from "./worktree-config.js";
 import { initTelemetry, getTelemetryClient } from "./telemetry.js";
+import { ensureMasterCompanyHierarchy } from "./services/master-company.js";
 
 type BetterAuthSessionUser = {
   id: string;
@@ -464,6 +465,14 @@ export async function startServer(): Promise<StartedServer> {
   let resolveSessionFromHeaders:
     | ((headers: Headers) => Promise<BetterAuthSessionResult | null>)
     | undefined;
+  const masterHierarchySeed = await ensureMasterCompanyHierarchy(db);
+  if (
+    masterHierarchySeed.masterCompanyCreated
+    || masterHierarchySeed.masterCeoCreated
+    || masterHierarchySeed.costResearchAgentCreated
+  ) {
+    logger.info(masterHierarchySeed, "Ensured master company hierarchy");
+  }
   if (config.deploymentMode === "local_trusted") {
     await ensureLocalTrustedBoardPrincipal(db as any);
   }

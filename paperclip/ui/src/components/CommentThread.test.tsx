@@ -76,6 +76,7 @@ describe("CommentThread", () => {
       pauseReason: null,
       pausedAt: null,
       permissions: { canCreateAgents: false },
+      isProtected: false,
       lastHeartbeatAt: null,
       metadata: null,
       createdAt: new Date("2026-03-11T00:00:00.000Z"),

@@ -179,7 +179,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const showAdapterTestEnvironmentButton = props.showAdapterTestEnvironmentButton ?? true;
   const showCreateRunPolicySection = props.showCreateRunPolicySection ?? true;
   const hideInstructionsFile = props.hideInstructionsFile ?? false;
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, companies } = useCompany();
   const queryClient = useQueryClient();
 
   // Sync disabled adapter types from server so dropdown filters them out
@@ -353,11 +353,33 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const detectedModel = detectedModelData?.model ?? null;
   const detectedModelCandidates = detectedModelData?.candidates ?? [];
 
+  const targetCompanyId = !isCreate ? props.agent.companyId : selectedCompanyId;
+  const masterCompanyId = useMemo(
+    () => companies.find((company) => company.companyType === "master")?.id ?? null,
+    [companies],
+  );
+
   const { data: companyAgents = [] } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none", "list"],
-    queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: Boolean(!isCreate && selectedCompanyId),
+    queryKey: targetCompanyId ? queryKeys.agents.list(targetCompanyId) : ["agents", "none", "list"],
+    queryFn: () => agentsApi.list(targetCompanyId!),
+    enabled: Boolean(!isCreate && targetCompanyId),
   });
+
+  const { data: masterCompanyAgents = [] } = useQuery({
+    queryKey: masterCompanyId ? queryKeys.agents.list(masterCompanyId) : ["agents", "master", "none"],
+    queryFn: () => agentsApi.list(masterCompanyId!),
+    enabled: Boolean(!isCreate && masterCompanyId && masterCompanyId !== targetCompanyId),
+  });
+
+  const managerCandidates = useMemo(() => {
+    if (isCreate) return [] as Agent[];
+    const byId = new Map<string, Agent>();
+    for (const agent of companyAgents) byId.set(agent.id, agent);
+    if (masterCompanyId && targetCompanyId && masterCompanyId !== targetCompanyId) {
+      for (const agent of masterCompanyAgents) byId.set(agent.id, agent);
+    }
+    return Array.from(byId.values());
+  }, [companyAgents, isCreate, masterCompanyAgents, masterCompanyId, targetCompanyId]);
 
   /** Props passed to adapter-specific config field components */
   const adapterFieldProps = {
@@ -508,7 +530,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             </Field>
             <Field label="Reports to" hint={help.reportsTo}>
               <ReportsToPicker
-                agents={companyAgents}
+                agents={managerCandidates}
                 value={eff("identity", "reportsTo", props.agent.reportsTo ?? null)}
                 onChange={(id) => mark("identity", "reportsTo", id)}
                 excludeAgentIds={[props.agent.id]}

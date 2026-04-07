@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
+  companies,
   agentConfigRevisions,
   agentApiKeys,
   agentRuntimeState,
@@ -249,10 +250,46 @@ export function agentService(db: Db) {
     return normalizeAgentRow(hydrated);
   }
 
-  async function ensureManager(companyId: string, managerId: string) {
+  async function isMasterCompany(companyId: string) {
+    const row = await db
+      .select({ companyType: companies.companyType })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .then((rows) => rows[0] ?? null);
+    return row?.companyType === "master";
+  }
+
+  async function findMasterCeoId() {
+    const row = await db
+      .select({ id: agents.id })
+      .from(agents)
+      .innerJoin(companies, eq(companies.id, agents.companyId))
+      .where(
+        and(
+          eq(companies.companyType, "master"),
+          eq(agents.role, "ceo"),
+          ne(agents.status, "terminated"),
+        ),
+      )
+      .orderBy(desc(agents.createdAt))
+      .then((rows) => rows[0] ?? null);
+    return row?.id ?? null;
+  }
+
+  async function ensureManager(
+    companyId: string,
+    managerId: string,
+    options?: { allowMasterCompanyManagers?: boolean },
+  ) {
     const manager = await getById(managerId);
     if (!manager) throw notFound("Manager not found");
     if (manager.companyId !== companyId) {
+      if (
+        options?.allowMasterCompanyManagers
+        && await isMasterCompany(manager.companyId)
+      ) {
+        return manager;
+      }
       throw unprocessable("Manager must belong to same company");
     }
     return manager;
@@ -317,7 +354,7 @@ export function agentService(db: Db) {
 
     if (data.reportsTo !== undefined) {
       if (data.reportsTo) {
-        await ensureManager(existing.companyId, data.reportsTo);
+        await ensureManager(existing.companyId, data.reportsTo, { allowMasterCompanyManagers: true });
       }
       await assertNoCycle(id, data.reportsTo);
     }
@@ -382,10 +419,6 @@ export function agentService(db: Db) {
     getById,
 
     create: async (companyId: string, data: Omit<typeof agents.$inferInsert, "companyId">) => {
-      if (data.reportsTo) {
-        await ensureManager(companyId, data.reportsTo);
-      }
-
       const existingAgents = await db
         .select({ id: agents.id, name: agents.name, status: agents.status })
         .from(agents)
@@ -393,10 +426,38 @@ export function agentService(db: Db) {
       const uniqueName = deduplicateAgentName(data.name, existingAgents);
 
       const role = data.role ?? "general";
+      let reportsTo = data.reportsTo ?? null;
+      if (reportsTo) {
+        await ensureManager(companyId, reportsTo, { allowMasterCompanyManagers: true });
+      } else if (role === "ceo") {
+        const existingActiveCeo = await db
+          .select({ id: agents.id })
+          .from(agents)
+          .where(
+            and(
+              eq(agents.companyId, companyId),
+              eq(agents.role, "ceo"),
+              ne(agents.status, "terminated"),
+            ),
+          )
+          .then((rows) => rows[0] ?? null);
+        if (!existingActiveCeo) {
+          const masterCeoId = await findMasterCeoId();
+          reportsTo = masterCeoId ?? null;
+        }
+      }
+
       const normalizedPermissions = normalizeAgentPermissions(data.permissions, role);
       const created = await db
         .insert(agents)
-        .values({ ...data, name: uniqueName, companyId, role, permissions: normalizedPermissions })
+        .values({
+          ...data,
+          name: uniqueName,
+          companyId,
+          role,
+          reportsTo,
+          permissions: normalizedPermissions,
+        })
         .returning()
         .then((rows) => rows[0]);
 

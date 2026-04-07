@@ -220,6 +220,15 @@ export function CompanySettings() {
       });
     }
   });
+  const restoreMutation = useMutation({
+    mutationFn: (companyId: string) =>
+      companiesApi.update(companyId, { status: "active" }),
+    onSuccess: async (company) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
+      setSelectedCompanyId(company.id);
+    }
+  });
 
   useEffect(() => {
     setBreadcrumbs([
@@ -235,6 +244,7 @@ export function CompanySettings() {
       </div>
     );
   }
+  const isProtectedCompany = selectedCompany.isDeletable === false || selectedCompany.companyType === "master";
 
   function handleSaveGeneral() {
     generalMutation.mutate({
@@ -570,8 +580,9 @@ export function CompanySettings() {
         </div>
         <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-4">
           <p className="text-sm text-muted-foreground">
-            Archive this company to hide it from the sidebar. This persists in
-            the database.
+            {selectedCompany.status === "archived"
+              ? "Restore this company back to active state so it appears in the sidebar again."
+              : "Archive this company to hide it from the sidebar. This persists in the database."}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -579,13 +590,15 @@ export function CompanySettings() {
               variant="destructive"
               disabled={
                 archiveMutation.isPending ||
-                selectedCompany.status === "archived"
+                restoreMutation.isPending ||
+                isProtectedCompany
               }
               onClick={() => {
                 if (!selectedCompanyId) return;
-                const confirmed = window.confirm(
-                  `Archive company "${selectedCompany.name}"? It will be hidden from the sidebar.`
-                );
+                const restoring = selectedCompany.status === "archived";
+                const confirmed = window.confirm(restoring
+                  ? `Restore company "${selectedCompany.name}" to active?`
+                  : `Archive company "${selectedCompany.name}"? It will be hidden from the sidebar.`);
                 if (!confirmed) return;
                 const nextCompanyId =
                   companies.find(
@@ -593,22 +606,32 @@ export function CompanySettings() {
                       company.id !== selectedCompanyId &&
                       company.status !== "archived"
                   )?.id ?? null;
-                archiveMutation.mutate({
-                  companyId: selectedCompanyId,
-                  nextCompanyId
-                });
+                if (restoring) {
+                  restoreMutation.mutate(selectedCompanyId);
+                } else {
+                  archiveMutation.mutate({
+                    companyId: selectedCompanyId,
+                    nextCompanyId
+                  });
+                }
               }}
             >
-              {archiveMutation.isPending
-                ? "Archiving..."
+              {archiveMutation.isPending || restoreMutation.isPending
+                ? "Saving..."
+                : isProtectedCompany
+                ? "Protected company"
                 : selectedCompany.status === "archived"
-                ? "Already archived"
+                ? "Restore company"
                 : "Archive company"}
             </Button>
-            {archiveMutation.isError && (
+            {(archiveMutation.isError || restoreMutation.isError) && (
               <span className="text-xs text-destructive">
                 {archiveMutation.error instanceof Error
                   ? archiveMutation.error.message
+                  : restoreMutation.error instanceof Error
+                  ? restoreMutation.error.message
+                  : selectedCompany.status === "archived"
+                  ? "Failed to restore company"
                   : "Failed to archive company"}
               </span>
             )}

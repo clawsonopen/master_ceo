@@ -30,6 +30,7 @@ import { validate } from "../middleware/validate.js";
 import {
   accessService,
   agentService,
+  companyService,
   executionWorkspaceService,
   feedbackService,
   goalService,
@@ -72,6 +73,7 @@ export function issueRoutes(
   const router = Router();
   const svc = issueService(db);
   const access = accessService(db);
+  const companiesSvc = companyService(db);
   const heartbeat = heartbeatService(db);
   const feedback = feedbackService(db);
   const instanceSettings = instanceSettingsService(db);
@@ -165,6 +167,14 @@ export function issueRoutes(
       throw forbidden("Missing permission: tasks:assign");
     }
     throw unauthorized();
+  }
+
+  async function assertCompanyNotArchived(companyId: string) {
+    const company = await companiesSvc.getById(companyId);
+    if (!company) throw new HttpError(404, "Company not found");
+    if (company.status === "archived") {
+      throw forbidden("Archived companies are read-only");
+    }
   }
 
   function requireAgentRunId(req: Request, res: Response) {
@@ -390,6 +400,7 @@ export function issueRoutes(
   router.post("/companies/:companyId/labels", validate(createIssueLabelSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    await assertCompanyNotArchived(companyId);
     const label = await svc.createLabel(companyId, req.body);
     const actor = getActorInfo(req);
     await logActivity(db, {
@@ -1045,6 +1056,7 @@ export function issueRoutes(
   router.post("/companies/:companyId/issues", validate(createIssueSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    await assertCompanyNotArchived(companyId);
     if (req.body.assigneeAgentId || req.body.assigneeUserId) {
       await assertCanAssignTasks(req, companyId);
     }
@@ -1093,6 +1105,7 @@ export function issueRoutes(
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    await assertCompanyNotArchived(existing.companyId);
     const assigneeWillChange =
       (req.body.assigneeAgentId !== undefined && req.body.assigneeAgentId !== existing.assigneeAgentId) ||
       (req.body.assigneeUserId !== undefined && req.body.assigneeUserId !== existing.assigneeUserId);
@@ -1485,6 +1498,7 @@ export function issueRoutes(
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    await assertCompanyNotArchived(existing.companyId);
     const attachments = await svc.listAttachments(id);
 
     const issue = await svc.remove(id);
@@ -1766,6 +1780,7 @@ export function issueRoutes(
       return;
     }
     assertCompanyAccess(req, issue.companyId);
+    await assertCompanyNotArchived(issue.companyId);
     if (!(await assertAgentRunCheckoutOwnership(req, res, issue))) return;
     const closedExecutionWorkspace = await getClosedIssueExecutionWorkspace(issue);
     if (closedExecutionWorkspace) {
@@ -2077,6 +2092,7 @@ export function issueRoutes(
     const companyId = req.params.companyId as string;
     const issueId = req.params.issueId as string;
     assertCompanyAccess(req, companyId);
+    await assertCompanyNotArchived(companyId);
     const issue = await svc.getById(issueId);
     if (!issue) {
       res.status(404).json({ error: "Issue not found" });

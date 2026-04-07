@@ -65,8 +65,8 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
     const selectableCompanies = sidebarCompanies.length > 0 ? sidebarCompanies : companies;
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && selectableCompanies.some((c) => c.id === stored)) return;
-    if (selectedCompanyId && selectableCompanies.some((c) => c.id === selectedCompanyId)) return;
+    if (stored && companies.some((c) => c.id === stored)) return;
+    if (selectedCompanyId && companies.some((c) => c.id === selectedCompanyId)) return;
 
     const next = selectableCompanies[0]!.id;
     setSelectedCompanyIdState(next);
