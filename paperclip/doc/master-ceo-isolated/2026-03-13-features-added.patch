@@ -1,0 +1,21 @@
+diff --git a/paperclip/doc/plans/2026-03-13-features.md b/paperclip/doc/plans/2026-03-13-features.md
+index 80c60a8..1d08048 100644
+--- a/paperclip/doc/plans/2026-03-13-features.md
++++ b/paperclip/doc/plans/2026-03-13-features.md
+@@ -510,6 +510,16 @@ This is probably the most important immediate workstream. The transcript says to
+ 
+ Treat this as a **P0 runtime contract**, not a nice-to-have.
+ 
++### Phase status update (2026-04-07)
++
++1. Phase 2 completed for dev startup resilience: preflight auto-recovery is integrated into `pnpm dev` and `pnpm dev:once`.
++2. Startup now auto-cleans stale embedded-postgres/process state before boot.
++3. Startup now enforces single-instance + port conflict guard before boot.
++4. Startup is now deterministic and health-gated (no ready state before `/api/health`).
++5. Second start while active now exits fast with `already running` instead of entering loop/stuck behavior.
++6. Manual fallback command is now available as `pnpm dev:recover`.
++7. Remaining in this workstream: wake gating, token telemetry normalization, circuit-breaker policy hardening, and in-app productized repair UX.
++
+ ### Part A: deterministic wake gating
+ 
+ Do cheap, explicit work detection before invoking an LLM.
