@@ -3,8 +3,10 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import { stdin, stdout } from "node:process";
 import { shouldTrackDevServerPath } from "./dev-runner-paths.mjs";
+import { runDevStartupRecovery } from "./dev-recovery.ts";
 import { createDevServiceIdentity, repoRoot } from "./dev-service-profile.ts";
 import {
   findAdoptableLocalService,
@@ -19,6 +21,9 @@ const scanIntervalMs = 1500;
 const autoRestartPollIntervalMs = 2500;
 const gracefulShutdownTimeoutMs = 10_000;
 const changedPathSampleLimit = 5;
+const startupHealthTimeoutMs = 60_000;
+const startupHealthPollIntervalMs = 750;
+const maxStartupAttempts = 2;
 const devServerStatusFilePath = path.join(repoRoot, ".paperclip", "dev-server-status.json");
 
 const watchedDirectories = [
@@ -133,6 +138,7 @@ let lastRestartAt: string | null = null;
 let scanInFlight = false;
 let restartInFlight = false;
 let shuttingDown = false;
+let startupHealthGateInFlight = false;
 let childExitWasExpected = false;
 let child: ReturnType<typeof spawn> | null = null;
 let childExitPromise: Promise<{ code: number; signal: NodeJS.Signals | null }> | null = null;
@@ -537,7 +543,7 @@ async function startServerChild() {
       });
       resolve({ code: code ?? 0, signal });
 
-      if (restartInFlight || expected || shuttingDown) {
+      if (restartInFlight || expected || shuttingDown || startupHealthGateInFlight) {
         return;
       }
       if (signal) {
@@ -548,7 +554,83 @@ async function startServerChild() {
     });
   });
 
-  await markChildAsCurrent();
+  await updateDevServiceRecord({
+    startupState: "booting",
+  });
+}
+
+async function waitForHealthyStartup() {
+  const deadline = Date.now() + startupHealthTimeoutMs;
+  const startupExitPromise = childExitPromise?.then((exit) => ({
+    kind: "exit" as const,
+    exit,
+  }));
+
+  while (Date.now() < deadline) {
+    try {
+      const healthPayload = await getDevHealthPayload() as { status?: string };
+      if (healthPayload.status === "ok") {
+        return { kind: "ready" as const };
+      }
+    } catch {
+      // Keep polling until timeout or child exit.
+    }
+
+    const raced = await Promise.race([
+      delay(startupHealthPollIntervalMs).then(() => ({ kind: "tick" as const })),
+      startupExitPromise ?? delay(startupHealthPollIntervalMs).then(() => ({ kind: "tick" as const })),
+    ]);
+    if (raced.kind === "exit") {
+      return raced;
+    }
+  }
+
+  return { kind: "timeout" as const };
+}
+
+async function startServerChildWithRecovery() {
+  for (let attempt = 1; attempt <= maxStartupAttempts; attempt += 1) {
+    startupHealthGateInFlight = true;
+    try {
+      await startServerChild();
+      const startup = await waitForHealthyStartup();
+      if (startup.kind === "ready") {
+        await markChildAsCurrent();
+        return;
+      }
+
+      if (startup.kind === "exit") {
+        const signalMessage = startup.exit.signal ? ` (signal ${startup.exit.signal})` : "";
+        if (attempt >= maxStartupAttempts) {
+          throw new Error(
+            `Dev server exited before /api/health became ready (code ${startup.exit.code}${signalMessage}).`,
+          );
+        }
+        console.warn(
+          `[paperclip] dev startup exited before health was ready; running recovery and retrying (${attempt}/${maxStartupAttempts})`,
+        );
+      } else {
+        if (attempt >= maxStartupAttempts) {
+          throw new Error(
+            `Timed out waiting for /api/health after ${startupHealthTimeoutMs}ms.`,
+          );
+        }
+        console.warn(
+          `[paperclip] /api/health did not become ready in time; running recovery and retrying (${attempt}/${maxStartupAttempts})`,
+        );
+      }
+    } finally {
+      startupHealthGateInFlight = false;
+    }
+
+    await stopChildForRestart();
+    await runDevStartupRecovery({
+      repoRoot,
+      serverPort,
+      allowedServiceKey: devService.serviceKey,
+      logLevel: "normal",
+    });
+  }
 }
 
 async function maybeAutoRestartChild() {
@@ -581,7 +663,26 @@ async function maybeAutoRestartChild() {
       exitOnDecline: false,
     });
     await stopChildForRestart();
-    await startServerChild();
+    startupHealthGateInFlight = true;
+    try {
+      await startServerChild();
+      const startup = await waitForHealthyStartup();
+      if (startup.kind === "ready") {
+        await markChildAsCurrent();
+        return;
+      }
+      if (startup.kind === "timeout") {
+        throw new Error(
+          `Timed out waiting for /api/health after ${startupHealthTimeoutMs}ms during auto-restart.`,
+        );
+      }
+      const signalMessage = startup.exit.signal ? ` (signal ${startup.exit.signal})` : "";
+      throw new Error(
+        `Dev server exited before /api/health became ready during auto-restart (code ${startup.exit.code}${signalMessage}).`,
+      );
+    } finally {
+      startupHealthGateInFlight = false;
+    }
   } catch (error) {
     const err = toError(error, "Auto-restart failed");
     process.stderr.write(`${err.stack ?? err.message}\n`);
@@ -642,8 +743,14 @@ process.on("SIGTERM", () => {
   void shutdown("SIGTERM");
 });
 
+await runDevStartupRecovery({
+  repoRoot,
+  serverPort,
+  allowedServiceKey: devService.serviceKey,
+  logLevel: "silent",
+});
 await maybePreflightMigrations();
-await startServerChild();
+await startServerChildWithRecovery();
 installDevIntervals();
 
 if (mode === "watch") {

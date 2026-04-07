@@ -52,6 +52,8 @@ curl http://localhost:3100/api/health
 curl http://localhost:3100/api/companies
 ```
 
+If `pnpm dev` or `pnpm dev:once` fails to start cleanly, run `pnpm dev:recover` before retrying. The startup flow already runs this preflight automatically; this manual command is the fallback for explicit recovery. Recovery may auto-stop stale Paperclip dev processes on the target port, but it will not kill unknown non-Paperclip processes.
+
 Reset local dev DB:
 
 ```sh

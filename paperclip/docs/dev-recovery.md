@@ -2,6 +2,12 @@
 
 Bu dokuman, `pnpm dev` veya `pnpm dev:once` calisirken gelisen dongu/crash sorunlarini hizlica toparlamak icin kullanilir.
 
+Not: `pnpm dev` / `pnpm dev:once` acilisinda artik otomatik preflight recovery calisir (stale process temizligi + tek instance/port kontrolu + startup health gate). Bu dokuman manuel fallback adimlari icindir.
+
+Port davranisi:
+- Hedef portta Paperclip process'i tespit edilirse auto-recovery onu kapatmayi dener.
+- Paperclip disi bilinmeyen process portu tutuyorsa guvenlik icin otomatik kill yapmaz; net hata verir.
+
 ## Tipik Semptomlar
 
 - `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL`
