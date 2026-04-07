@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
 import { companies } from "@paperclipai/db";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import {
   DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION,
   companyPortabilityExportSchema,
@@ -465,7 +465,26 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     if (existingCompany.status !== "archived") {
       throw forbidden("Only archived companies can be deleted");
     }
-    const company = await svc.remove(companyId);
+    const safeTableName = /^[a-z0-9_]+$/;
+    let company = null as Awaited<ReturnType<typeof svc.remove>>;
+    let lastDeleteError: unknown = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try {
+        company = await svc.remove(companyId);
+        lastDeleteError = null;
+        break;
+      } catch (error) {
+        lastDeleteError = error;
+        const err = error as { code?: string; table_name?: string };
+        if (err.code !== "23503" || !err.table_name || !safeTableName.test(err.table_name)) {
+          throw error;
+        }
+        await db.execute(sql.raw(`delete from "${err.table_name}" where company_id = '${companyId}'::uuid`));
+      }
+    }
+    if (!company && lastDeleteError) {
+      throw lastDeleteError;
+    }
     if (!company) {
       res.status(404).json({ error: "Company not found" });
       return;

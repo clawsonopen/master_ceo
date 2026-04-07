@@ -22,8 +22,10 @@ import { useCompany } from "../context/CompanyContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
+import { useArchivedCompanyMutationGuard } from "../hooks/useArchivedCompanyMutationGuard";
 import { Button } from "@/components/ui/button";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { ArchivedCompanyReadonlyDialog } from "./ArchivedCompanyReadonlyDialog";
 
 export function Sidebar() {
   const { openNewIssue } = useDialog();
@@ -36,6 +38,12 @@ export function Sidebar() {
     refetchInterval: 10_000,
   });
   const liveRunCount = liveRuns?.length ?? 0;
+  const {
+    guardMutation,
+    dialogOpen,
+    setDialogOpen,
+    companyName,
+  } = useArchivedCompanyMutationGuard();
 
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
@@ -73,7 +81,7 @@ export function Sidebar() {
         <div className="flex flex-col gap-0.5">
           {/* New Issue button aligned with nav items */}
           <button
-            onClick={() => openNewIssue()}
+            onClick={() => guardMutation(() => openNewIssue())}
             className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
           >
             <SquarePen className="h-4 w-4 shrink-0" />
@@ -123,6 +131,11 @@ export function Sidebar() {
           missingBehavior="placeholder"
         />
       </nav>
+      <ArchivedCompanyReadonlyDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        companyName={companyName}
+      />
     </aside>
   );
 }

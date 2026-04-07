@@ -1,4 +1,5 @@
 import { ChangeEvent, useEffect, useState } from "react";
+import { Link } from "@/lib/router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION } from "@paperclipai/shared";
 import { useCompany } from "../context/CompanyContext";
@@ -9,6 +10,14 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Settings, Check, Download, Upload } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
@@ -41,6 +50,7 @@ export function CompanySettings() {
   const [brandColor, setBrandColor] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   // Sync local state from selected company
   useEffect(() => {
@@ -228,6 +238,22 @@ export function CompanySettings() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
       setSelectedCompanyId(company.id);
     }
+  });
+  const deleteCompanyMutation = useMutation({
+    mutationFn: ({
+      companyId,
+      nextCompanyId,
+    }: {
+      companyId: string;
+      nextCompanyId: string | null;
+    }) => companiesApi.remove(companyId).then(() => ({ nextCompanyId })),
+    onSuccess: async ({ nextCompanyId }) => {
+      if (nextCompanyId) {
+        setSelectedCompanyId(nextCompanyId);
+      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
+    },
   });
 
   useEffect(() => {
@@ -554,20 +580,20 @@ export function CompanySettings() {
         <div className="rounded-md border border-border px-4 py-4">
           <p className="text-sm text-muted-foreground">
             Import and export have moved to dedicated pages accessible from the{" "}
-            <a href="/org" className="underline hover:text-foreground">Org Chart</a> header.
+            <Link to="/org" className="underline hover:text-foreground">Org Chart</Link> header.
           </p>
           <div className="mt-3 flex items-center gap-2">
             <Button size="sm" variant="outline" asChild>
-              <a href="/company/export">
+              <Link to="/company/export">
                 <Download className="mr-1.5 h-3.5 w-3.5" />
                 Export
-              </a>
+              </Link>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <a href="/company/import">
+              <Link to="/company/import">
                 <Upload className="mr-1.5 h-3.5 w-3.5" />
                 Import
-              </a>
+              </Link>
             </Button>
           </div>
         </div>
@@ -591,6 +617,7 @@ export function CompanySettings() {
               disabled={
                 archiveMutation.isPending ||
                 restoreMutation.isPending ||
+                deleteCompanyMutation.isPending ||
                 isProtectedCompany
               }
               onClick={() => {
@@ -616,7 +643,7 @@ export function CompanySettings() {
                 }
               }}
             >
-              {archiveMutation.isPending || restoreMutation.isPending
+                {archiveMutation.isPending || restoreMutation.isPending
                 ? "Saving..."
                 : isProtectedCompany
                 ? "Protected company"
@@ -636,8 +663,78 @@ export function CompanySettings() {
               </span>
             )}
           </div>
+          {selectedCompany.status === "archived" && !isProtectedCompany && (
+            <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-3 space-y-2">
+              <p className="text-sm text-destructive font-medium">
+                This action is irreversible. Deleting removes this company and all related data permanently.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Before deleting, we strongly recommend exporting a backup package.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" asChild>
+                  <Link to="/company/export">Export backup</Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={deleteCompanyMutation.isPending}
+                  onClick={() => setDeleteConfirmOpen(true)}
+                >
+                  {deleteCompanyMutation.isPending ? "Deleting..." : "Delete forever"}
+                </Button>
+                {deleteCompanyMutation.isError && (
+                  <span className="text-xs text-destructive">
+                    {deleteCompanyMutation.error instanceof Error
+                      ? deleteCompanyMutation.error.message
+                      : "Failed to delete company"}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Delete Company Permanently?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. We strongly recommend exporting a backup package before deleting.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button variant="outline" asChild>
+              <Link to="/company/export" onClick={() => setDeleteConfirmOpen(false)}>
+                Export backup
+              </Link>
+            </Button>
+            <Button variant="ghost" onClick={() => setDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteCompanyMutation.isPending || !selectedCompanyId}
+              onClick={() => {
+                if (!selectedCompanyId) return;
+                const nextCompanyId =
+                  companies.find(
+                    (company) => company.id !== selectedCompanyId && company.status !== "archived",
+                  )?.id
+                  ?? companies.find((company) => company.id !== selectedCompanyId)?.id
+                  ?? null;
+                deleteCompanyMutation.mutate({
+                  companyId: selectedCompanyId,
+                  nextCompanyId,
+                });
+                setDeleteConfirmOpen(false);
+              }}
+            >
+              {deleteCompanyMutation.isPending ? "Deleting..." : "Delete forever"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

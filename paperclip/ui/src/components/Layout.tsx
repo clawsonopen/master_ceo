@@ -36,6 +36,8 @@ import { cn } from "../lib/utils";
 import { NotFoundPage } from "../pages/NotFound";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { useArchivedCompanyMutationGuard } from "../hooks/useArchivedCompanyMutationGuard";
+import { ArchivedCompanyReadonlyDialog } from "./ArchivedCompanyReadonlyDialog";
 
 const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
 
@@ -77,6 +79,17 @@ export function Layout() {
   }, [companies, companyPrefix]);
   const hasUnknownCompanyPrefix =
     Boolean(companyPrefix) && !companiesLoading && companies.length > 0 && !matchedCompany;
+  const {
+    isArchivedCompany,
+    dialogOpen,
+    setDialogOpen,
+    companyName,
+  } = useArchivedCompanyMutationGuard();
+  const archivedInteractionLocked =
+    isArchivedCompany
+    && !location.pathname.includes("/company/settings")
+    && !location.pathname.includes("/company/export")
+    && !location.pathname.includes("/companies");
   const { data: health } = useQuery({
     queryKey: queryKeys.health,
     queryFn: () => healthApi.get(),
@@ -420,7 +433,7 @@ export function Layout() {
               id="main-content"
               tabIndex={-1}
               className={cn(
-                "flex-1 p-4 md:p-6",
+                "relative flex-1 p-4 md:p-6",
                 isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto",
               )}
             >
@@ -431,6 +444,14 @@ export function Layout() {
                 />
               ) : (
                 <Outlet />
+              )}
+              {archivedInteractionLocked && (
+                <button
+                  type="button"
+                  onClick={() => setDialogOpen(true)}
+                  className="absolute inset-0 z-10 cursor-not-allowed bg-transparent"
+                  aria-label="Archived company is read-only"
+                />
               )}
             </main>
             <PropertiesPanel />
@@ -443,6 +464,11 @@ export function Layout() {
       <NewProjectDialog />
       <NewGoalDialog />
       <NewAgentDialog />
+      <ArchivedCompanyReadonlyDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        companyName={companyName}
+      />
       <ToastViewport />
       </div>
     </GeneralSettingsProvider>

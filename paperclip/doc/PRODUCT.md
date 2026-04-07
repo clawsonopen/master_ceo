@@ -110,6 +110,7 @@ Paperclip’s core identity is a **control plane for autonomous AI companies**, 
 - Make outputs first-class: files, docs, reports, previews, links, screenshots.
 - Provide **hooks into engineering workflows**: worktrees, preview servers, PR links, external review tools.
 - Use **plugins** for edge cases like rich chat, knowledge bases, doc editors, custom tracing.
+- Ship local builds that can self-recover from embedded database runtime faults without terminal intervention.
 
 **Do not**
 
@@ -118,6 +119,21 @@ Paperclip’s core identity is a **control plane for autonomous AI companies**, 
 - Do not build enterprise-grade RBAC first. The current V1 spec still treats multi-board governance and fine-grained human permissions as out of scope, so the first multi-user version should be coarse and company-scoped.
 - Do not lead with raw bash logs and transcripts. Default view should be human-readable intent/progress, with raw detail beneath.
 - Do not force users to understand provider/API-key plumbing unless absolutely necessary. There are active onboarding/auth issues already; friction here is clearly real.
+- Do not require end users to kill processes manually to recover startup.
+
+## Productization Reliability Gate (Local Builds)
+
+Before local packaged distribution (exe/dmg/app), the following are release blockers:
+
+1. Single-instance startup guard (no duplicate server processes).
+2. Automatic embedded-postgres runtime recovery on startup (safe retry path).
+3. UI health gate with clear status ("starting", "recovering", "ready").
+4. In-app repair action for local runtime issues.
+5. Actionable, human-readable error messaging for unrecoverable failures.
+
+Data safety rule:
+
+- Recovery must preserve user data and company records. It may clean transient runtime locks/state, but it must not reset business data by default.
 
 ## Specific design goals
 

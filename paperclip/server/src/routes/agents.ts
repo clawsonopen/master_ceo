@@ -1289,6 +1289,7 @@ export function agentRoutes(db: Db) {
   router.post("/companies/:companyId/agent-hires", validate(createAgentHireSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     await assertCanCreateAgentsForCompany(req, companyId);
+    await assertCompanyNotArchived(companyId);
     const sourceIssueIds = parseSourceIssueIds(req.body);
     const {
       desiredSkills: requestedDesiredSkills,
@@ -1544,6 +1545,7 @@ export function agentRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    await assertCompanyNotArchived(existing.companyId);
 
     if (req.actor.type === "agent") {
       const actorAgent = req.actor.agentId ? await svc.getById(req.actor.agentId) : null;
@@ -1603,6 +1605,7 @@ export function agentRoutes(db: Db) {
     }
 
     await assertCanManageInstructionsPath(req, existing);
+    await assertCompanyNotArchived(existing.companyId);
 
     const existingAdapterConfig = asRecord(existing.adapterConfig) ?? {};
     const explicitKey = asNonEmptyString(req.body.adapterConfigKey);
@@ -1691,6 +1694,7 @@ export function agentRoutes(db: Db) {
       return;
     }
     await assertCanManageInstructionsPath(req, existing);
+    await assertCompanyNotArchived(existing.companyId);
 
     const actor = getActorInfo(req);
     const { bundle, adapterConfig } = await instructions.updateBundle(existing, req.body);
@@ -1757,6 +1761,7 @@ export function agentRoutes(db: Db) {
       return;
     }
     await assertCanManageInstructionsPath(req, existing);
+    await assertCompanyNotArchived(existing.companyId);
 
     const actor = getActorInfo(req);
     const result = await instructions.writeFile(existing, req.body.path, req.body.content, {
@@ -1806,6 +1811,7 @@ export function agentRoutes(db: Db) {
       return;
     }
     await assertCanManageInstructionsPath(req, existing);
+    await assertCompanyNotArchived(existing.companyId);
 
     const relativePath = typeof req.query.path === "string" ? req.query.path : "";
     if (!relativePath.trim()) {
@@ -1840,6 +1846,7 @@ export function agentRoutes(db: Db) {
       return;
     }
     await assertCanUpdateAgent(req, existing);
+    await assertCompanyNotArchived(existing.companyId);
 
     if (hasOwn(req.body as object, "permissions")) {
       res.status(422).json({ error: "Use /api/agents/:id/permissions for permission changes" });
@@ -2057,6 +2064,7 @@ export function agentRoutes(db: Db) {
     if (existing.isProtected) {
       throw forbidden("Protected agents cannot be deleted");
     }
+    await assertCompanyNotArchived(existing.companyId);
     const agent = await svc.remove(id);
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
@@ -2085,20 +2093,22 @@ export function agentRoutes(db: Db) {
   router.post("/agents/:id/keys", validate(createAgentKeySchema), async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
-    const key = await svc.createApiKey(id, req.body.name);
-
     const agent = await svc.getById(id);
-    if (agent) {
-      await logActivity(db, {
-        companyId: agent.companyId,
-        actorType: "user",
-        actorId: req.actor.userId ?? "board",
-        action: "agent.key_created",
-        entityType: "agent",
-        entityId: agent.id,
-        details: { keyId: key.id, name: key.name },
-      });
+    if (!agent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
     }
+    await assertCompanyNotArchived(agent.companyId);
+    const key = await svc.createApiKey(id, req.body.name);
+    await logActivity(db, {
+      companyId: agent.companyId,
+      actorType: "user",
+      actorId: req.actor.userId ?? "board",
+      action: "agent.key_created",
+      entityType: "agent",
+      entityId: agent.id,
+      details: { keyId: key.id, name: key.name },
+    });
 
     res.status(201).json(key);
   });

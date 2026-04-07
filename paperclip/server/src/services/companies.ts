@@ -6,15 +6,38 @@ import {
   assets,
   agents,
   agentApiKeys,
+  agentConfigRevisions,
   agentRuntimeState,
   agentTaskSessions,
   agentWakeupRequests,
+  budgetIncidents,
+  budgetPolicies,
+  companySkills,
+  documentRevisions,
+  documents,
+  executionWorkspaces,
+  feedbackExports,
+  feedbackVotes,
+  issueApprovals,
+  issueAttachments,
   issues,
+  issueDocuments,
+  issueInboxArchives,
+  issueLabels,
+  issueReadStates,
+  issueRelations,
+  issueWorkProducts,
   issueComments,
+  labels,
+  pluginCompanySettings,
+  projectGoals,
+  projectWorkspaces,
   projects,
   goals,
   heartbeatRuns,
   heartbeatRunEvents,
+  workspaceOperations,
+  workspaceRuntimeServices,
   costEvents,
   financeEvents,
   approvalComments,
@@ -269,18 +292,85 @@ export function companyService(db: Db) {
 
     remove: (id: string) =>
       db.transaction(async (tx) => {
+        const lockedCompany = await tx
+          .execute(sql`select id from companies where id = ${id} for update`)
+          .then((result) => result[0] as { id: string } | undefined);
+        if (!lockedCompany) return null;
+
+        const companyIssueIds = await tx
+          .select({ id: issues.id })
+          .from(issues)
+          .where(eq(issues.companyId, id))
+          .then((rows) => rows.map((row) => row.id));
+        const companyProjectIds = await tx
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.companyId, id))
+          .then((rows) => rows.map((row) => row.id));
+        const projectScopedIssueIds = companyProjectIds.length > 0
+          ? await tx
+            .select({ id: issues.id })
+            .from(issues)
+            .where(inArray(issues.projectId, companyProjectIds))
+            .then((rows) => rows.map((row) => row.id))
+          : [];
+        const allIssueIds = [...new Set([...companyIssueIds, ...projectScopedIssueIds])];
+
         // Delete from child tables in dependency order
+        await tx.delete(pluginCompanySettings).where(eq(pluginCompanySettings.companyId, id));
+        await tx.delete(workspaceOperations).where(eq(workspaceOperations.companyId, id));
+        await tx.delete(workspaceRuntimeServices).where(eq(workspaceRuntimeServices.companyId, id));
+        await tx.delete(projectWorkspaces).where(eq(projectWorkspaces.companyId, id));
+        await tx.delete(projectGoals).where(eq(projectGoals.companyId, id));
+        await tx.delete(executionWorkspaces).where(eq(executionWorkspaces.companyId, id));
+        if (allIssueIds.length > 0) {
+          await tx.delete(issueReadStates).where(inArray(issueReadStates.issueId, allIssueIds));
+          await tx.delete(issueInboxArchives).where(inArray(issueInboxArchives.issueId, allIssueIds));
+          await tx.delete(issueRelations).where(inArray(issueRelations.issueId, allIssueIds));
+          await tx.delete(issueRelations).where(inArray(issueRelations.relatedIssueId, allIssueIds));
+        }
+        await tx.execute(
+          sql`delete from issue_read_states where issue_id in (select id from issues where company_id = ${id})`,
+        );
+        await tx.delete(issueWorkProducts).where(eq(issueWorkProducts.companyId, id));
+        await tx.delete(issueAttachments).where(eq(issueAttachments.companyId, id));
+        await tx.delete(issueApprovals).where(eq(issueApprovals.companyId, id));
+        await tx.delete(issueDocuments).where(eq(issueDocuments.companyId, id));
+        await tx.delete(documentRevisions).where(eq(documentRevisions.companyId, id));
+        await tx.delete(documents).where(eq(documents.companyId, id));
+        await tx.delete(issueReadStates).where(eq(issueReadStates.companyId, id));
+        await tx.delete(issueInboxArchives).where(eq(issueInboxArchives.companyId, id));
+        await tx.delete(issueRelations).where(eq(issueRelations.companyId, id));
+        await tx.delete(issueLabels).where(eq(issueLabels.companyId, id));
+        await tx.delete(labels).where(eq(labels.companyId, id));
         await tx.delete(heartbeatRunEvents).where(eq(heartbeatRunEvents.companyId, id));
         await tx.delete(agentTaskSessions).where(eq(agentTaskSessions.companyId, id));
         await tx.delete(heartbeatRuns).where(eq(heartbeatRuns.companyId, id));
+        await tx.delete(agentConfigRevisions).where(eq(agentConfigRevisions.companyId, id));
         await tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, id));
         await tx.delete(agentApiKeys).where(eq(agentApiKeys.companyId, id));
         await tx.delete(agentRuntimeState).where(eq(agentRuntimeState.companyId, id));
         await tx.delete(issueComments).where(eq(issueComments.companyId, id));
+        if (allIssueIds.length > 0) {
+          // Defensive cleanup for historical rows with mismatched company_id.
+          await tx.delete(issueReadStates).where(inArray(issueReadStates.issueId, allIssueIds));
+          await tx.delete(issueInboxArchives).where(inArray(issueInboxArchives.issueId, allIssueIds));
+          await tx.delete(issueRelations).where(inArray(issueRelations.issueId, allIssueIds));
+          await tx.delete(issueRelations).where(inArray(issueRelations.relatedIssueId, allIssueIds));
+        }
+        if (companyProjectIds.length > 0) {
+          // Defensive cleanup for issues referencing company projects with mismatched company_id.
+          await tx.delete(issues).where(inArray(issues.projectId, companyProjectIds));
+        }
+        await tx.delete(feedbackVotes).where(eq(feedbackVotes.companyId, id));
+        await tx.delete(feedbackExports).where(eq(feedbackExports.companyId, id));
         await tx.delete(costEvents).where(eq(costEvents.companyId, id));
         await tx.delete(financeEvents).where(eq(financeEvents.companyId, id));
+        await tx.delete(budgetIncidents).where(eq(budgetIncidents.companyId, id));
+        await tx.delete(budgetPolicies).where(eq(budgetPolicies.companyId, id));
         await tx.delete(approvalComments).where(eq(approvalComments.companyId, id));
         await tx.delete(approvals).where(eq(approvals.companyId, id));
+        await tx.delete(companySkills).where(eq(companySkills.companyId, id));
         await tx.delete(companySecrets).where(eq(companySecrets.companyId, id));
         await tx.delete(joinRequests).where(eq(joinRequests.companyId, id));
         await tx.delete(invites).where(eq(invites.companyId, id));
@@ -293,11 +383,26 @@ export function companyService(db: Db) {
         await tx.delete(projects).where(eq(projects.companyId, id));
         await tx.delete(agents).where(eq(agents.companyId, id));
         await tx.delete(activityLog).where(eq(activityLog.companyId, id));
-        const rows = await tx
-          .delete(companies)
-          .where(eq(companies.id, id))
-          .returning();
-        return rows[0] ?? null;
+        await tx.execute(sql`delete from issue_read_states where company_id = ${id}`);
+        await tx.execute(sql`delete from budget_policies where company_id = ${id}`);
+        await tx.execute(sql`delete from company_skills where company_id = ${id}`);
+        const safeTableName = /^[a-z0-9_]+$/;
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          try {
+            const rows = await tx
+              .delete(companies)
+              .where(eq(companies.id, id))
+              .returning();
+            return rows[0] ?? null;
+          } catch (error) {
+            const err = error as { code?: string; table_name?: string };
+            if (err.code !== "23503" || !err.table_name || !safeTableName.test(err.table_name)) {
+              throw error;
+            }
+            await tx.execute(sql.raw(`delete from "${err.table_name}" where company_id = '${id}'::uuid`));
+          }
+        }
+        throw new Error("Unable to delete company after resolving foreign key dependencies");
       }),
 
     stats: () =>

@@ -8,7 +8,7 @@ import {
 } from "@paperclipai/shared";
 import { trackSkillImported } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
-import { accessService, agentService, companySkillService, logActivity } from "../services/index.js";
+import { accessService, agentService, companyService, companySkillService, logActivity } from "../services/index.js";
 import { forbidden } from "../errors.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { getTelemetryClient } from "../telemetry.js";
@@ -25,6 +25,7 @@ export function companySkillRoutes(db: Db) {
   const router = Router();
   const agents = agentService(db);
   const access = accessService(db);
+  const companies = companyService(db);
   const svc = companySkillService(db);
 
   function canCreateAgents(agent: { permissions: Record<string, unknown> | null | undefined }) {
@@ -54,6 +55,11 @@ export function companySkillRoutes(db: Db) {
 
   async function assertCanMutateCompanySkills(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
+    const company = await companies.getById(companyId);
+    if (!company) throw forbidden("Company not found");
+    if (company.status === "archived") {
+      throw forbidden("Archived companies are read-only");
+    }
 
     if (req.actor.type === "board") {
       if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;

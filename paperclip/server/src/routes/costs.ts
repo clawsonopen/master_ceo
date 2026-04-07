@@ -33,6 +33,14 @@ export function costRoutes(db: Db) {
   const companies = companyService(db);
   const agents = agentService(db);
 
+  async function assertCompanyNotArchived(companyId: string) {
+    const company = await companies.getById(companyId);
+    if (!company) {
+      return null;
+    }
+    return company.status !== "archived";
+  }
+
   router.post("/companies/:companyId/cost-events", validate(createCostEventSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -221,6 +229,15 @@ export function costRoutes(db: Db) {
       assertBoard(req);
       const companyId = req.params.companyId as string;
       assertCompanyAccess(req, companyId);
+      const canMutate = await assertCompanyNotArchived(companyId);
+      if (canMutate === null) {
+        res.status(404).json({ error: "Company not found" });
+        return;
+      }
+      if (!canMutate) {
+        res.status(403).json({ error: "Archived companies are read-only" });
+        return;
+      }
       const summary = await budgets.upsertPolicy(companyId, req.body, req.actor.userId ?? "board");
       res.json(summary);
     },
@@ -234,6 +251,15 @@ export function costRoutes(db: Db) {
       const companyId = req.params.companyId as string;
       const incidentId = req.params.incidentId as string;
       assertCompanyAccess(req, companyId);
+      const canMutate = await assertCompanyNotArchived(companyId);
+      if (canMutate === null) {
+        res.status(404).json({ error: "Company not found" });
+        return;
+      }
+      if (!canMutate) {
+        res.status(403).json({ error: "Archived companies are read-only" });
+        return;
+      }
       const incident = await budgets.resolveIncident(companyId, incidentId, req.body, req.actor.userId ?? "board");
       res.json(incident);
     },
@@ -251,6 +277,15 @@ export function costRoutes(db: Db) {
     assertBoard(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    const canMutate = await assertCompanyNotArchived(companyId);
+    if (canMutate === null) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+    if (!canMutate) {
+      res.status(403).json({ error: "Archived companies are read-only" });
+      return;
+    }
     const company = await companies.update(companyId, { budgetMonthlyCents: req.body.budgetMonthlyCents });
     if (!company) {
       res.status(404).json({ error: "Company not found" });
@@ -290,6 +325,15 @@ export function costRoutes(db: Db) {
     }
 
     assertCompanyAccess(req, agent.companyId);
+    const canMutate = await assertCompanyNotArchived(agent.companyId);
+    if (canMutate === null) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+    if (!canMutate) {
+      res.status(403).json({ error: "Archived companies are read-only" });
+      return;
+    }
 
     if (req.actor.type === "agent") {
       if (req.actor.agentId !== agentId) {

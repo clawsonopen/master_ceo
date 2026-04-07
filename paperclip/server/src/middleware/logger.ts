@@ -5,6 +5,9 @@ import { pinoHttp } from "pino-http";
 import { readConfigFile } from "../config-file.js";
 import { resolveDefaultLogsDir, resolveHomeAwarePath } from "../home-paths.js";
 
+const DEFAULT_LOG_RETENTION_DAYS = 30;
+const ROTATED_LOG_FILE_RE = /^server-\d{4}-\d{2}-\d{2}(?:-\d+)?\.log$/;
+
 function resolveServerLogDir(): string {
   const envOverride = process.env.PAPERCLIP_LOG_DIR?.trim();
   if (envOverride) return resolveHomeAwarePath(envOverride);
@@ -15,10 +18,65 @@ function resolveServerLogDir(): string {
   return resolveDefaultLogsDir();
 }
 
+function resolveLogRetentionDays(): number {
+  const raw = process.env.PAPERCLIP_LOG_RETENTION_DAYS?.trim();
+  if (!raw) return DEFAULT_LOG_RETENTION_DAYS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_LOG_RETENTION_DAYS;
+  return parsed;
+}
+
+function formatDateYmd(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function archiveCurrentLogFile(logDir: string, logFile: string) {
+  if (!fs.existsSync(logFile)) return;
+  const stat = fs.statSync(logFile);
+  if (stat.size <= 0) return;
+
+  const todayYmd = formatDateYmd(new Date());
+  const lastWriteYmd = formatDateYmd(stat.mtime);
+  if (lastWriteYmd === todayYmd) return;
+
+  let target = path.join(logDir, `server-${lastWriteYmd}.log`);
+  let counter = 1;
+  while (fs.existsSync(target)) {
+    target = path.join(logDir, `server-${lastWriteYmd}-${counter}.log`);
+    counter += 1;
+  }
+  fs.renameSync(logFile, target);
+}
+
+function pruneExpiredRotatedLogs(logDir: string, retentionDays: number) {
+  const cutoff = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+  for (const entry of fs.readdirSync(logDir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    if (!ROTATED_LOG_FILE_RE.test(entry.name)) continue;
+    const filePath = path.join(logDir, entry.name);
+    const stat = fs.statSync(filePath);
+    if (stat.mtimeMs < cutoff) {
+      fs.rmSync(filePath, { force: true });
+    }
+  }
+}
+
 const logDir = resolveServerLogDir();
 fs.mkdirSync(logDir, { recursive: true });
 
 const logFile = path.join(logDir, "server.log");
+const retentionDays = resolveLogRetentionDays();
+
+try {
+  archiveCurrentLogFile(logDir, logFile);
+  pruneExpiredRotatedLogs(logDir, retentionDays);
+} catch (error) {
+  // Logging should never block server startup.
+  console.warn("[logger] Failed to rotate/prune server logs:", error);
+}
 
 const sharedOpts = {
   translateTime: "HH:MM:ss",

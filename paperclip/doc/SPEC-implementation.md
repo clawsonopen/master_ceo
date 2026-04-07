@@ -109,6 +109,26 @@ A lightweight scheduler/worker in the server process handles:
 
 Separate queue infrastructure is not required for V1.
 
+## 6.4 Release Hardening: Embedded Postgres Resilience
+
+Packaged local builds (exe/dmg/app) that use embedded PostgreSQL must include
+startup resilience so end users are not blocked by low-level DB lock/shared-memory
+failures.
+
+Required for release:
+
+1. Single-instance lock for app/server startup (prevent duplicate local servers).
+2. Boot preflight self-heal for stale embedded-postgres state (stale lock/pid/shared-memory recovery, then retry).
+3. Health-gated startup flow (UI shows clear "starting/recovering" state until DB/API healthy).
+4. One-click in-app recovery action ("Repair local database runtime") without terminal usage.
+5. Clear user-facing error copy for unrecoverable cases (what happened + next action).
+6. Structured diagnostics bundle export for support (logs + recent startup events).
+
+Non-goal:
+
+- Do not silently wipe business data as part of automatic recovery.
+- Recovery should repair runtime state, not reset user/company records.
+
 ## 7. Canonical Data Model (V1)
 
 All core tables include `id`, `created_at`, `updated_at` unless noted.

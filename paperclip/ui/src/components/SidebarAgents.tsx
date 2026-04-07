@@ -11,8 +11,10 @@ import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { useAgentOrder } from "../hooks/useAgentOrder";
+import { useArchivedCompanyMutationGuard } from "../hooks/useArchivedCompanyMutationGuard";
 import { AgentIcon } from "./AgentIconPicker";
 import { BudgetSidebarMarker } from "./BudgetSidebarMarker";
+import { ArchivedCompanyReadonlyDialog } from "./ArchivedCompanyReadonlyDialog";
 import {
   Collapsible,
   CollapsibleContent,
@@ -67,10 +69,17 @@ export function SidebarAgents() {
   const agentMatch = location.pathname.match(/^\/(?:[^/]+\/)?agents\/([^/]+)(?:\/([^/]+))?/);
   const activeAgentId = agentMatch?.[1] ?? null;
   const activeTab = agentMatch?.[2] ?? null;
+  const {
+    guardMutation,
+    dialogOpen,
+    setDialogOpen,
+    companyName,
+  } = useArchivedCompanyMutationGuard();
 
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
+    <>
+      <Collapsible open={open} onOpenChange={setOpen}>
       <div className="group">
         <div className="flex items-center px-3 py-1.5">
           <CollapsibleTrigger className="flex items-center gap-1 flex-1 min-w-0">
@@ -87,7 +96,7 @@ export function SidebarAgents() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              openNewAgent();
+              guardMutation(() => openNewAgent());
             }}
             className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition-colors"
             aria-label="New agent"
@@ -140,6 +149,12 @@ export function SidebarAgents() {
           })}
         </div>
       </CollapsibleContent>
-    </Collapsible>
+      </Collapsible>
+      <ArchivedCompanyReadonlyDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        companyName={companyName}
+      />
+    </>
   );
 }

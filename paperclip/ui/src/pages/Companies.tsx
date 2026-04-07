@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
@@ -280,7 +281,7 @@ export function Companies() {
                       asChild
                       onClick={() => setSelectedCompanyId(company.id)}
                     >
-                      <a href="/company/export">Export backup</a>
+                      <Link to="/company/export">Export backup</Link>
                     </Button>
                     <Button
                       variant="ghost"

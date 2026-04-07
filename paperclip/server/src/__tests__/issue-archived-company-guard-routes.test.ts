@@ -6,6 +6,7 @@ import { errorHandler } from "../middleware/index.js";
 
 const mockIssueService = vi.hoisted(() => ({
   create: vi.fn(),
+  getById: vi.fn(),
 }));
 
 const mockCompanyService = vi.hoisted(() => ({
@@ -87,6 +88,16 @@ describe("issue routes archived company guard", () => {
       id: "company-1",
       status: "archived",
     });
+    mockIssueService.getById.mockResolvedValue({
+      id: "issue-1",
+      companyId: "company-1",
+      status: "todo",
+      assigneeAgentId: null,
+      assigneeUserId: null,
+      createdByUserId: "local-board",
+      identifier: "PAP-1",
+      title: "Archived issue",
+    });
   });
 
   it("rejects creating issues for archived companies", async () => {
@@ -99,4 +110,5 @@ describe("issue routes archived company guard", () => {
     expect(res.body.error).toContain("Archived companies are read-only");
     expect(mockIssueService.create).not.toHaveBeenCalled();
   });
+
 });

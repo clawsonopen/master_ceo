@@ -16,6 +16,9 @@ const mockAccessService = vi.hoisted(() => ({
 const mockCompanySkillService = vi.hoisted(() => ({
   importFromSource: vi.fn(),
 }));
+const mockCompanyService = vi.hoisted(() => ({
+  getById: vi.fn(),
+}));
 
 const mockLogActivity = vi.hoisted(() => vi.fn());
 const mockTrackSkillImported = vi.hoisted(() => vi.fn());
@@ -38,6 +41,7 @@ vi.mock("../telemetry.js", () => ({
 vi.mock("../services/index.js", () => ({
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
+  companyService: () => mockCompanyService,
   companySkillService: () => mockCompanySkillService,
   logActivity: mockLogActivity,
 }));
@@ -57,6 +61,10 @@ function createApp(actor: Record<string, unknown>) {
 describe("company skill mutation permissions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCompanyService.getById.mockResolvedValue({
+      id: "company-1",
+      status: "active",
+    });
     mockGetTelemetryClient.mockReturnValue({ track: vi.fn() });
     mockCompanySkillService.importFromSource.mockResolvedValue({
       imported: [],
@@ -260,5 +268,26 @@ describe("company skill mutation permissions", () => {
       "company-1",
       "https://github.com/vercel-labs/agent-browser",
     );
+  });
+
+  it("rejects skill mutations for archived companies", async () => {
+    mockCompanyService.getById.mockResolvedValue({
+      id: "company-1",
+      status: "archived",
+    });
+
+    const res = await request(createApp({
+      type: "board",
+      userId: "local-board",
+      companyIds: ["company-1"],
+      source: "local_implicit",
+      isInstanceAdmin: false,
+    }))
+      .post("/api/companies/company-1/skills/import")
+      .send({ source: "https://github.com/vercel-labs/agent-browser" });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
+    expect(res.body.error).toContain("Archived companies are read-only");
+    expect(mockCompanySkillService.importFromSource).not.toHaveBeenCalled();
   });
 });
