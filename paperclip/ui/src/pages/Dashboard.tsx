@@ -19,9 +19,9 @@ import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
 import { cn, formatCents } from "../lib/utils";
-import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle } from "lucide-react";
+import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle, TriangleAlert } from "lucide-react";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
-import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
+import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart, DenyRateTrendChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
@@ -36,6 +36,9 @@ export function Dashboard() {
   const { openOnboarding } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [animatedActivityIds, setAnimatedActivityIds] = useState<Set<string>>(new Set());
+  const [kbPolicyWindow, setKbPolicyWindow] = useState<"24h" | "7d" | "30d">("24h");
+  const [selectedPolicyAction, setSelectedPolicyAction] = useState<string | null>(null);
+  const [selectedPolicyScope, setSelectedPolicyScope] = useState<string | null>(null);
   const seenActivityIdsRef = useRef<Set<string>>(new Set());
   const hydratedActivityRef = useRef(false);
   const activityAnimationTimersRef = useRef<number[]>([]);
@@ -51,8 +54,12 @@ export function Dashboard() {
   }, [setBreadcrumbs]);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: queryKeys.dashboard(selectedCompanyId!),
-    queryFn: () => dashboardApi.summary(selectedCompanyId!),
+    queryKey: queryKeys.dashboard(selectedCompanyId!, kbPolicyWindow, selectedPolicyAction, selectedPolicyScope),
+    queryFn: () => dashboardApi.summary(selectedCompanyId!, {
+      kbPolicyWindow,
+      kbPolicyAction: selectedPolicyAction,
+      kbPolicyScope: selectedPolicyScope,
+    }),
     enabled: !!selectedCompanyId,
   });
 
@@ -229,7 +236,7 @@ export function Dashboard() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-1 sm:gap-2">
+          <div className="grid grid-cols-2 xl:grid-cols-5 gap-1 sm:gap-2">
             <MetricCard
               icon={Bot}
               value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
@@ -281,9 +288,21 @@ export function Dashboard() {
                 </span>
               }
             />
+            <MetricCard
+              icon={TriangleAlert}
+              value={`${Number(data.kbPolicy?.denyRatePercent ?? 0).toFixed(1)}%`}
+              label="KB Policy Deny Rate"
+              description={
+                <span>
+                  {data.kbPolicy?.topDeniedAction ? `Top action: ${data.kbPolicy.topDeniedAction}` : "No sampled denies"}{", "}
+                  {data.kbPolicy?.topDeniedScope ? `scope: ${data.kbPolicy.topDeniedScope}` : "scope: -"}{", "}
+                  {data.kbPolicy?.totalDecisions ?? 0} decisions / window
+                </span>
+              }
+            />
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <ChartCard title="Run Activity" subtitle="Last 14 days">
               <RunActivityChart runs={runs ?? []} />
             </ChartCard>
@@ -296,7 +315,94 @@ export function Dashboard() {
             <ChartCard title="Success Rate" subtitle="Last 14 days">
               <SuccessRateChart runs={runs ?? []} />
             </ChartCard>
+            <ChartCard title="KB Deny Trend" subtitle="Last 24 snapshots">
+              <div className="space-y-3">
+                <div className="flex items-center gap-1">
+                  {(["24h", "7d", "30d"] as const).map((window) => (
+                    <button
+                      key={window}
+                      type="button"
+                      onClick={() => setKbPolicyWindow(window)}
+                      className={cn(
+                        "px-2 py-1 text-[10px] border",
+                        kbPolicyWindow === window ? "bg-accent text-foreground border-border" : "text-muted-foreground border-border/60 hover:bg-accent/40",
+                      )}
+                    >
+                      {window}
+                    </button>
+                  ))}
+                </div>
+                <DenyRateTrendChart points={data.kbPolicy?.trend ?? []} />
+              </div>
+            </ChartCard>
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartCard title="KB Deny By Action" subtitle="Current snapshot">
+              <div className="space-y-2">
+                {(data.kbPolicy?.byAction ?? [])
+                  .slice()
+                  .sort((left, right) => right.deny - left.deny)
+                  .slice(0, 6)
+                  .map((item) => (
+                    <button
+                      key={item.action}
+                      type="button"
+                      onClick={() => setSelectedPolicyAction((current) => current === item.action ? null : item.action)}
+                      className={cn(
+                        "w-full flex items-center justify-between text-xs px-2 py-1 border text-left",
+                        selectedPolicyAction === item.action ? "bg-accent border-border" : "border-border/50 hover:bg-accent/40",
+                      )}
+                    >
+                      <span className="text-muted-foreground">{item.action}</span>
+                      <span className="font-mono">{item.deny}</span>
+                    </button>
+                  ))}
+                {(data.kbPolicy?.byAction?.length ?? 0) === 0 && (
+                  <p className="text-xs text-muted-foreground">No policy samples yet</p>
+                )}
+              </div>
+            </ChartCard>
+            <ChartCard title="KB Deny By Scope" subtitle="Top denied scopes">
+              <div className="space-y-2">
+                {(data.kbPolicy?.byScopeTop ?? []).slice(0, 6).map((item) => (
+                  <button
+                    key={item.scope}
+                    type="button"
+                    onClick={() => setSelectedPolicyScope((current) => current === item.scope ? null : item.scope)}
+                    className={cn(
+                      "w-full flex items-center justify-between text-xs gap-3 px-2 py-1 border text-left",
+                      selectedPolicyScope === item.scope ? "bg-accent border-border" : "border-border/50 hover:bg-accent/40",
+                    )}
+                  >
+                    <span className="text-muted-foreground truncate">{item.scope}</span>
+                    <span className="font-mono whitespace-nowrap">{item.deny} ({item.denyRatePercent.toFixed(1)}%)</span>
+                  </button>
+                ))}
+                {(data.kbPolicy?.byScopeTop?.length ?? 0) === 0 && (
+                  <p className="text-xs text-muted-foreground">No denied scopes in current snapshot</p>
+                )}
+              </div>
+            </ChartCard>
+          </div>
+
+          {(selectedPolicyAction || selectedPolicyScope) && (
+            <div className="border border-border px-3 py-2 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+              <span>Policy filter:</span>
+              {selectedPolicyAction ? <span className="font-mono">action={selectedPolicyAction}</span> : null}
+              {selectedPolicyScope ? <span className="font-mono">scope={selectedPolicyScope}</span> : null}
+              <button
+                type="button"
+                className="underline underline-offset-2"
+                onClick={() => {
+                  setSelectedPolicyAction(null);
+                  setSelectedPolicyScope(null);
+                }}
+              >
+                clear
+              </button>
+            </div>
+          )}
 
           <PluginSlotOutlet
             slotTypes={["dashboardWidget"]}

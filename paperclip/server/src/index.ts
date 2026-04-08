@@ -41,6 +41,8 @@ import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-
 import { maybePersistWorktreeRuntimePorts } from "./worktree-config.js";
 import { initTelemetry, getTelemetryClient } from "./telemetry.js";
 import { ensureMasterCompanyHierarchy } from "./services/master-company.js";
+import { ensureKnowledgeBaseRuntime, shutdownKnowledgeBaseRuntime } from "./services/knowledge-base/index.js";
+import { startKbPolicyMetricsPersistence, stopKbPolicyMetricsPersistence } from "./services/knowledge-base/policy-audit.js";
 
 type BetterAuthSessionUser = {
   id: string;
@@ -478,6 +480,27 @@ export async function startServer(): Promise<StartedServer> {
   if (config.deploymentMode === "local_trusted") {
     await ensureLocalTrustedBoardPrincipal(db as any);
   }
+  const kbRuntime = await ensureKnowledgeBaseRuntime(db as any, { startWatcher: true });
+  startKbPolicyMetricsPersistence(db as any);
+  const kbStats = kbRuntime.indexer.getStats();
+  const kbVector = kbRuntime.indexer.getVectorCapability();
+  if (!kbVector.available) {
+    logger.warn(
+      {
+        stats: kbStats,
+        vector: kbVector,
+      },
+      "Knowledge base startup self-check: semantic vector backend unavailable; running in fallback mode",
+    );
+  } else {
+    logger.info(
+      {
+        stats: kbStats,
+        vector: kbVector,
+      },
+      "Knowledge base startup self-check passed",
+    );
+  }
   if (config.deploymentMode === "authenticated") {
     const {
       createBetterAuthHandler,
@@ -761,6 +784,13 @@ export async function startServer(): Promise<StartedServer> {
           logger.error({ err }, "Failed to stop embedded PostgreSQL cleanly");
         }
       }
+
+      await shutdownKnowledgeBaseRuntime().catch((err) => {
+        logger.warn({ err }, "Failed to shut down knowledge base runtime cleanly");
+      });
+      await stopKbPolicyMetricsPersistence().catch((err) => {
+        logger.warn({ err }, "Failed to flush KB policy metrics on shutdown");
+      });
 
       process.exit(0);
     };

@@ -12,6 +12,7 @@ import type {
 import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Coins, DollarSign, ReceiptText } from "lucide-react";
 import { budgetsApi } from "../api/budgets";
 import { costsApi } from "../api/costs";
+import { dashboardApi } from "../api/dashboard";
 import { BillerSpendCard } from "../components/BillerSpendCard";
 import { BudgetIncidentCard } from "../components/BudgetIncidentCard";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
@@ -32,6 +33,7 @@ import { billingTypeDisplayName, cn, formatCents, formatTokens, providerDisplayN
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Link } from "@/lib/router";
 
 const NO_COMPANY = "__none__";
 
@@ -197,6 +199,13 @@ export function Costs() {
     enabled: !!selectedCompanyId && customReady,
     refetchInterval: 30_000,
     staleTime: 5_000,
+  });
+
+  const { data: dashboardData } = useQuery({
+    queryKey: queryKeys.dashboard(companyId, "7d"),
+    queryFn: () => dashboardApi.summary(companyId, { kbPolicyWindow: "7d" }),
+    enabled: !!selectedCompanyId && customReady,
+    staleTime: 15_000,
   });
 
   const invalidateBudgetViews = () => {
@@ -653,6 +662,30 @@ export function Costs() {
                   ))}
                 </div>
               ) : null}
+
+              <Card>
+                <CardHeader className="px-5 pt-5 pb-2">
+                  <CardTitle className="text-base">KB policy governance</CardTitle>
+                  <CardDescription>
+                    Access deny trend helps explain blocked automation and hidden policy friction.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="px-5 pb-5 pt-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="text-2xl font-semibold tabular-nums">
+                        {Number(dashboardData?.kbPolicy?.denyRatePercent ?? 0).toFixed(1)}%
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        7d deny rate · top action: {dashboardData?.kbPolicy?.topDeniedAction ?? "-"} · top scope: {dashboardData?.kbPolicy?.topDeniedScope ?? "-"}
+                      </p>
+                    </div>
+                    <Link to="/dashboard" className="text-sm underline underline-offset-2">
+                      Open dashboard policy detail
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
 
               <div className="grid gap-4 xl:grid-cols-[1.3fr,1fr]">
                 <Card>

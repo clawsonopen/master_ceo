@@ -261,3 +261,36 @@ export function SuccessRateChart({ runs }: { runs: HeartbeatRun[] }) {
     </div>
   );
 }
+
+export function DenyRateTrendChart({ points }: { points: Array<{ at: string; denyRatePercent: number }> }) {
+  const hasData = points.length > 0;
+  if (!hasData) return <p className="text-xs text-muted-foreground">No policy samples yet</p>;
+
+  const recent = points.slice(-24);
+  const max = Math.max(1, ...recent.map((point) => point.denyRatePercent));
+
+  return (
+    <div>
+      <div className="flex items-end gap-[3px] h-20">
+        {recent.map((point) => {
+          const heightPct = (point.denyRatePercent / max) * 100;
+          return (
+            <div
+              key={point.at}
+              className="flex-1 h-full flex flex-col justify-end"
+              title={`${new Date(point.at).toLocaleString()}: ${point.denyRatePercent.toFixed(2)}% deny`}
+            >
+              <div
+                style={{
+                  height: `${Math.max(2, heightPct)}%`,
+                  minHeight: 2,
+                  backgroundColor: point.denyRatePercent >= 25 ? "#ef4444" : point.denyRatePercent >= 10 ? "#f59e0b" : "#22c55e",
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

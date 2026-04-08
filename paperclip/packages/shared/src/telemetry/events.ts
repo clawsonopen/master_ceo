@@ -85,3 +85,22 @@ export function trackErrorHandlerCrash(
 ): void {
   client.track("error.handler_crash", { error_code: dims.errorCode });
 }
+
+export function trackKnowledgeBasePolicyAccess(
+  client: TelemetryClient,
+  dims: {
+    action: string;
+    decision: "allow" | "deny";
+    actor: "board" | "agent";
+    scope?: string | null;
+    reason?: string | null;
+  },
+): void {
+  client.track("policy.kb_access", {
+    action: dims.action,
+    decision: dims.decision,
+    actor: dims.actor,
+    ...(dims.scope ? { scope: dims.scope } : {}),
+    ...(dims.reason ? { reason: dims.reason } : {}),
+  });
+}

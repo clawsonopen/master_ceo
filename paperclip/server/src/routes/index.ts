@@ -16,3 +16,4 @@ export { llmRoutes } from "./llms.js";
 export { accessRoutes } from "./access.js";
 export { instanceSettingsRoutes } from "./instance-settings.js";
 export { apiKeySettingsRoutes } from "./api-key-settings.js";
+export { knowledgeBaseRoutes } from "./knowledge-base.js";

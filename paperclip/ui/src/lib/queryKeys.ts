@@ -106,7 +106,12 @@ export const queryKeys = {
     list: (companyId: string) => ["secrets", companyId] as const,
     providers: (companyId: string) => ["secret-providers", companyId] as const,
   },
-  dashboard: (companyId: string) => ["dashboard", companyId] as const,
+  dashboard: (
+    companyId: string,
+    kbPolicyWindow: "24h" | "7d" | "30d" = "24h",
+    kbPolicyAction?: string | null,
+    kbPolicyScope?: string | null,
+  ) => ["dashboard", companyId, kbPolicyWindow, kbPolicyAction ?? "__all-actions__", kbPolicyScope ?? "__all-scopes__"] as const,
   sidebarBadges: (companyId: string) => ["sidebar-badges", companyId] as const,
   activity: (companyId: string) => ["activity", companyId] as const,
   costs: (companyId: string, from?: string, to?: string) =>

@@ -38,6 +38,7 @@ export function llmRoutes(db: Db) {
       "- GET /api/companies/:companyId/agent-configurations",
       "- GET /api/agents/:id/configuration",
       "- POST /api/companies/:companyId/agent-hires",
+      "- GET /llms/knowledge-base-tools.txt",
       "",
       "Agent identity references:",
       "- GET /llms/agent-icons.txt",
@@ -45,6 +46,27 @@ export function llmRoutes(db: Db) {
       "Notes:",
       "- Sensitive values are redacted in configuration read APIs.",
       "- New hires may be created in pending_approval state depending on company settings.",
+      "",
+    ];
+    res.type("text/plain").send(lines.join("\n"));
+  });
+
+  router.get("/llms/knowledge-base-tools.txt", async (req, res) => {
+    await assertCanRead(req);
+    const lines = [
+      "# Knowledge Base Tool Surface",
+      "",
+      "Tool-style API endpoints:",
+      "- POST /api/knowledge-base/search",
+      "- GET /api/knowledge-base/read?path=<relative-path>",
+      "- POST /api/knowledge-base/write",
+      "- GET /api/knowledge-base/list?directory=<optional-relative-dir>",
+      "- POST /api/knowledge-base/wiki-entry",
+      "",
+      "Security and behavior:",
+      "- Agent scope checks are enforced via agents.kb_access (read/write/search).",
+      "- Unauthorized scope operations return an explicit tool-style error payload.",
+      "- Writes trigger re-indexing and wiki log updates.",
       "",
     ];
     res.type("text/plain").send(lines.join("\n"));

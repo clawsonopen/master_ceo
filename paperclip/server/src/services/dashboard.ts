@@ -1,13 +1,25 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, approvals, companies, costEvents, issues } from "@paperclipai/db";
+import { activityLog, agents, approvals, companies, costEvents, issues } from "@paperclipai/db";
 import { notFound } from "../errors.js";
 import { budgetService } from "./budgets.js";
+
+type KbPolicySnapshotDetails = {
+  totals?: { total?: number; deny?: number; denyRatePercent?: number };
+  byAction?: Record<string, { total?: number; allow?: number; deny?: number; denyRatePercent?: number }>;
+  byScope?: Record<string, { total?: number; allow?: number; deny?: number; denyRatePercent?: number }>;
+  byScopeTop?: Array<{ scope?: string; deny?: number; denyRatePercent?: number }>;
+  intervalSeconds?: number;
+};
 
 export function dashboardService(db: Db) {
   const budgets = budgetService(db);
   return {
-    summary: async (companyId: string) => {
+    summary: async (companyId: string, options?: {
+      kbPolicyWindow?: "24h" | "7d" | "30d";
+      kbPolicyAction?: string;
+      kbPolicyScope?: string;
+    }) => {
       const company = await db
         .select()
         .from(companies)
@@ -42,7 +54,6 @@ export function dashboardService(db: Db) {
       };
       for (const row of agentRows) {
         const count = Number(row.count);
-        // "idle" agents are operational — count them as active
         const bucket = row.status === "idle" ? "active" : row.status;
         agentCounts[bucket] = (agentCounts[bucket] ?? 0) + count;
       }
@@ -82,6 +93,64 @@ export function dashboardService(db: Db) {
           : 0;
       const budgetOverview = await budgets.overview(companyId);
 
+      const kbPolicyWindow = options?.kbPolicyWindow ?? "24h";
+      const horizonMs = kbPolicyWindow === "30d"
+        ? 30 * 24 * 60 * 60 * 1000
+        : kbPolicyWindow === "7d"
+          ? 7 * 24 * 60 * 60 * 1000
+          : 24 * 60 * 60 * 1000;
+      const horizon = new Date(Date.now() - horizonMs);
+      const policySnapshotRows = await db
+        .select({
+          details: activityLog.details,
+          createdAt: activityLog.createdAt,
+        })
+        .from(activityLog)
+        .where(
+          and(
+            eq(activityLog.companyId, companyId),
+            eq(activityLog.action, "kb.policy_metrics.snapshot"),
+            gte(activityLog.createdAt, horizon),
+          ),
+        )
+        .orderBy(asc(activityLog.createdAt));
+
+      const latestPolicyDetails = (policySnapshotRows.at(-1)?.details ?? null) as KbPolicySnapshotDetails | null;
+      const actionFilter = options?.kbPolicyAction?.trim();
+      const scopeFilter = options?.kbPolicyScope?.trim().toLowerCase();
+      const policyTrend = policySnapshotRows
+        .map((row) => {
+          const details = row.details as KbPolicySnapshotDetails | null;
+          const actionSlice = actionFilter ? details?.byAction?.[actionFilter] : undefined;
+          const scopeSlice = scopeFilter ? details?.byScope?.[scopeFilter] : undefined;
+          const selectedSlice = actionSlice ?? scopeSlice;
+          const denyRatePercent = selectedSlice
+            ? Number(selectedSlice.denyRatePercent ?? (selectedSlice.total ? ((Number(selectedSlice.deny ?? 0) / Number(selectedSlice.total)) * 100) : 0))
+            : Number(details?.totals?.denyRatePercent ?? 0);
+          return {
+            at: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+            denyRatePercent,
+          };
+        })
+        .slice(-24);
+
+      const topDeniedAction = latestPolicyDetails?.byAction
+        ? Object.entries(latestPolicyDetails.byAction)
+          .sort((left, right) => Number(right[1]?.deny ?? 0) - Number(left[1]?.deny ?? 0))[0]?.[0] ?? null
+        : null;
+      const topDeniedScope = latestPolicyDetails?.byScopeTop?.[0]?.scope ?? null;
+      const byAction = latestPolicyDetails?.byAction
+        ? Object.entries(latestPolicyDetails.byAction).map(([action, totals]) => ({
+          action,
+          deny: Number(totals?.deny ?? 0),
+        }))
+        : [];
+      const byScopeTop = (latestPolicyDetails?.byScopeTop ?? []).map((item) => ({
+        scope: item.scope ?? "unknown",
+        deny: Number(item.deny ?? 0),
+        denyRatePercent: Number(item.denyRatePercent ?? 0),
+      }));
+
       return {
         companyId,
         agents: {
@@ -102,6 +171,22 @@ export function dashboardService(db: Db) {
           pendingApprovals: budgetOverview.pendingApprovalCount,
           pausedAgents: budgetOverview.pausedAgentCount,
           pausedProjects: budgetOverview.pausedProjectCount,
+        },
+        kbPolicy: {
+          window: kbPolicyWindow,
+          filter: {
+            action: actionFilter ?? null,
+            scope: scopeFilter ?? null,
+          },
+          denyRatePercent: Number(latestPolicyDetails?.totals?.denyRatePercent ?? 0),
+          intervalSeconds: Number(latestPolicyDetails?.intervalSeconds ?? 0),
+          totalDecisions: Number(latestPolicyDetails?.totals?.total ?? 0),
+          denyDecisions: Number(latestPolicyDetails?.totals?.deny ?? 0),
+          topDeniedAction,
+          topDeniedScope,
+          byAction,
+          byScopeTop,
+          trend: policyTrend,
         },
       };
     },
