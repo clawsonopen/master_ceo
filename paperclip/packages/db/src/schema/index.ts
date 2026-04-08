@@ -1,4 +1,6 @@
 export { companies } from "./companies.js";
+export { apiKeys } from "./api_keys.js";
+export { providerDiscoverySuggestions } from "./provider_discovery_suggestions.js";
 export { companyLogos } from "./company_logos.js";
 export { authUsers, authSessions, authAccounts, authVerifications } from "./auth.js";
 export { instanceSettings } from "./instance_settings.js";

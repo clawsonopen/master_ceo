@@ -27,4 +27,9 @@ export const defaultCreateValues: CreateConfigValues = {
   maxTurnsPerRun: 1000,
   heartbeatEnabled: false,
   intervalSec: 300,
+  routerProvider: "",
+  routerModel: "",
+  routerDecisionNote: "",
+  routerTaskHint: "",
+  routerPreference: "balanced",
 };

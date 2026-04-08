@@ -5,12 +5,14 @@ import { agents, companies } from "@paperclipai/db";
 export const MASTER_COMPANY_NAME = "Master Holding Company";
 export const MASTER_CEO_NAME = "Master CEO";
 export const COST_RESEARCH_AGENT_NAME = "Cost & Provider Research Agent";
+export const MODEL_RESEARCH_ROUTER_AGENT_NAME = "Model Research Router Agent";
 
 type SeededMasterHierarchy = {
   companyId: string;
   masterCompanyCreated: boolean;
   masterCeoCreated: boolean;
   costResearchAgentCreated: boolean;
+  modelResearchRouterAgentCreated: boolean;
 };
 
 type MasterHierarchyDb = Pick<Db, "select" | "insert" | "update">;
@@ -120,6 +122,38 @@ async function ensureProtectedAgent(
   return { id: existing.id, created: false };
 }
 
+const MODEL_RESEARCH_ROUTER_CAPABILITIES = [
+  "Owns provider+model assignment recommendations for Master CEO and company CEOs.",
+  "Combines quality, speed, and cost heuristics with saved provider key health.",
+  "Generates deterministic recommendation notes for auditability.",
+  "Maintains router assignment policy defaults and fallback provider strategy.",
+  "Prepares provider API reference mappings for auth/test endpoint validation.",
+  "Plans and drives provider docs auto-discovery (Phase 3B crawl + parse workflow).",
+].join("\n");
+
+const MODEL_RESEARCH_ROUTER_INSTRUCTIONS = `# SKILLS.md
+
+## Current skills
+- router_assignment
+- model_research
+- provider_catalog_curation
+- cost_performance_tradeoff_analysis
+- provider_key_health_awareness
+- deterministic_decision_logging
+
+## In-progress / planned skills (Phase 3B)
+- provider_docs_autodiscovery
+- auth_scheme_detection
+- test_endpoint_discovery
+- api_reference_crawl
+- model_list_live_discovery
+
+## Operating notes
+- Prefer deterministic safety rules for execution-time enforcement.
+- Use API key validity state and provider model catalog before recommending assignments.
+- Emit explicit decision notes with preference, task hint, and fallback path.
+`;
+
 export async function ensureMasterCompanyHierarchy(db: Db): Promise<SeededMasterHierarchy> {
   return db.transaction(async (tx) => {
     let masterCompany = await tx
@@ -160,15 +194,52 @@ export async function ensureMasterCompanyHierarchy(db: Db): Promise<SeededMaster
       title: "Provider Intelligence Researcher",
       icon: "search",
       reportsTo: masterCeo.id,
+      permissions: { canCreateAgents: true },
       skills: ["provider_research", "cost_analysis", "quota_monitoring"],
       kbAccess: { read: ["global"], write: ["global"], search: ["global"] },
     });
+
+    const modelResearchRouterAgent = await ensureProtectedAgent(tx, {
+      companyId: masterCompany.id,
+      name: MODEL_RESEARCH_ROUTER_AGENT_NAME,
+      role: "researcher",
+      title: "Model Research + Router Agent",
+      icon: "route",
+      reportsTo: masterCeo.id,
+      permissions: { canCreateAgents: true },
+      skills: [
+        "router_assignment",
+        "model_research",
+        "provider_catalog_curation",
+        "cost_performance_tradeoff_analysis",
+        "provider_docs_autodiscovery",
+      ],
+      kbAccess: { read: ["global"], write: ["global"], search: ["global"] },
+    });
+
+    await tx
+      .update(agents)
+      .set({
+        capabilities: MODEL_RESEARCH_ROUTER_CAPABILITIES,
+        adapterConfig: {
+          instructionsBundleMode: "inline_seeded",
+          instructionsEntryFile: "SKILLS.md",
+          seededSkillsMarkdown: MODEL_RESEARCH_ROUTER_INSTRUCTIONS,
+          routerProvider: "openrouter",
+          routerModel: "openrouter/auto",
+          routerPreference: "balanced",
+          routerDecisionNote: "Default seeded assignment: balanced routing with audit-first notes.",
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, modelResearchRouterAgent.id));
 
     return {
       companyId: masterCompany.id,
       masterCompanyCreated,
       masterCeoCreated: masterCeo.created,
       costResearchAgentCreated: costResearchAgent.created,
+      modelResearchRouterAgentCreated: modelResearchRouterAgent.created,
     };
   });
 }

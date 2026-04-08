@@ -743,3 +743,31 @@ Full Turkish language support for all UI elements and agent communication.
 - Language switchable in settings with immediate effect
 - Agents communicate in selected language
 - No hardcoded strings remaining in React components
+
+---
+
+## 2026-04-08 Update (Phase 3A)
+
+### Completed in codebase
+- Master hierarchy seed now creates a third protected master agent: `Model Research Router Agent`.
+- Seeded protected agents under Master Company now all have `canCreateAgents: true`.
+- New master agent defaults include seeded capabilities + `SKILLS.md`-style instruction content for routing/model research.
+- New agent creation/hire flow now enforces `canCreateAgents: true` by default for all agents created inside `company_type = master`.
+
+### Added now (router/model skills)
+- `router_assignment`
+- `model_research`
+- `provider_catalog_curation`
+- `cost_performance_tradeoff_analysis`
+- `provider_key_health_awareness`
+- `deterministic_decision_logging`
+
+### Planned next (Phase 3B)
+- Provider docs auto-discovery via Router Agent + Model Research Agent:
+  - discover provider docs root from Provider ID
+  - crawl API reference pages and subpages
+  - infer auth scheme/header format (OpenAI-compatible first)
+  - infer test endpoint candidates (prefer model list endpoint)
+  - infer live model-list endpoint and model ids
+  - write normalized provider metadata for Enforcer-safe runtime use
+- Keep deterministic safety boundary: Enforcer executes only validated metadata.

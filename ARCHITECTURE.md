@@ -576,3 +576,26 @@ Optional future extension:
 
 Design principle:
 - Dynamic intelligence, deterministic safety.
+
+---
+
+## 2026-04-08 Architecture Delta
+
+### Master hierarchy runtime
+- Protected master agents now include:
+  - Master CEO
+  - Cost & Provider Research Agent
+  - Model Research Router Agent
+- Master-company personnel policy now standardizes `canCreateAgents: true` by default at create/hire time.
+
+### Router architecture update
+- Model Research Router Agent now holds default assignment context (provider/model preference, task-hint-aware recommendation notes).
+- Router Enforcer remains deterministic gatekeeper for runtime safety.
+
+### Planned 3B discovery subsystem
+- Add provider-doc discovery pipeline:
+  - Provider ID -> docs URL discovery
+  - controlled crawl of API reference subpages
+  - extraction of auth/test/model-list metadata
+  - confidence-scored suggestions for human or policy approval
+- Enforcer consumes only validated metadata snapshots.

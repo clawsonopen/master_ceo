@@ -69,3 +69,11 @@ and gets a fully autonomous AI holding company that:
 - System tray, notifications, IPC — all native and well-documented
 - VS Code, Discord, Slack, Notion, Obsidian all use Electron successfully
 - Extra ~150MB bundle size is irrelevant when user downloads 9-18GB Gemma 4 model
+---
+
+## 2026-04-08 Context Update
+
+- Master Company now includes a default `Model Research Router Agent` in addition to Master CEO and Cost Research Agent.
+- Master-company staffing policy now defaults to `canCreateAgents: true` for newly created/hired agents.
+- Router/model assignment foundation is now prepared for a Phase 3B provider-doc auto-discovery system.
+- Phase 3B target: Router Agent + Model Research Agent should discover provider API docs, crawl subpages, and propose auth/test/model metadata automatically under deterministic safety constraints.

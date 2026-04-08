@@ -6,6 +6,7 @@ import {
   COST_RESEARCH_AGENT_NAME,
   MASTER_CEO_NAME,
   MASTER_COMPANY_NAME,
+  MODEL_RESEARCH_ROUTER_AGENT_NAME,
   ensureMasterCompanyHierarchy,
 } from "../services/master-company.js";
 
@@ -37,9 +38,11 @@ describe("ensureMasterCompanyHierarchy", () => {
     expect(first.masterCompanyCreated).toBe(true);
     expect(first.masterCeoCreated).toBe(true);
     expect(first.costResearchAgentCreated).toBe(true);
+    expect(first.modelResearchRouterAgentCreated).toBe(true);
     expect(second.masterCompanyCreated).toBe(false);
     expect(second.masterCeoCreated).toBe(false);
     expect(second.costResearchAgentCreated).toBe(false);
+    expect(second.modelResearchRouterAgentCreated).toBe(false);
 
     const masterCompany = await db
       .select()
@@ -56,14 +59,18 @@ describe("ensureMasterCompanyHierarchy", () => {
       .from(agents)
       .where(eq(agents.companyId, masterCompany!.id));
 
-    expect(seededAgents).toHaveLength(2);
+    expect(seededAgents).toHaveLength(3);
 
     const masterCeo = seededAgents.find((agent) => agent.name === MASTER_CEO_NAME);
     const costResearchAgent = seededAgents.find((agent) => agent.name === COST_RESEARCH_AGENT_NAME);
+    const routerAgent = seededAgents.find((agent) => agent.name === MODEL_RESEARCH_ROUTER_AGENT_NAME);
 
     expect(masterCeo?.isProtected).toBe(true);
     expect(masterCeo?.role).toBe("ceo");
     expect(costResearchAgent?.isProtected).toBe(true);
     expect(costResearchAgent?.reportsTo).toBe(masterCeo?.id);
+    expect(routerAgent?.isProtected).toBe(true);
+    expect(routerAgent?.permissions?.canCreateAgents).toBe(true);
+    expect(routerAgent?.reportsTo).toBe(masterCeo?.id);
   });
 });

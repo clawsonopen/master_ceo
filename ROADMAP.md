@@ -176,3 +176,21 @@ Complete Phase 1: Create CODEBASE_MAP.md documenting:
 - File structure (directory layout)
 
 Do NOT write any code. Analysis only.
+
+---
+
+## 2026-04-08 Status Addendum
+
+### Phase 3 progress update
+- Added default protected master agent: `Model Research Router Agent`.
+- Master-company agent creation now defaults to `canCreateAgents: true` for consistency.
+- Seeded router/model-research skill profile and default routing guidance.
+
+### Phase 3B scope (planned)
+- Router Agent + Model Research Agent web-discovery loop for custom providers.
+- Automatic provider-doc crawl and extraction of:
+  - auth header scheme
+  - test endpoint URL
+  - model listing endpoint
+  - initial provider model catalog
+- Persist discovered metadata as suggested config first, then Enforcer-validated activation.

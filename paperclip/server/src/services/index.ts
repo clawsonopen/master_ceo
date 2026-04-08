@@ -22,6 +22,8 @@ export { sidebarBadgeService } from "./sidebar-badges.js";
 export { accessService } from "./access.js";
 export { boardAuthService } from "./board-auth.js";
 export { instanceSettingsService } from "./instance-settings.js";
+export { apiKeyService, API_KEY_PROVIDERS, type ApiKeyProvider } from "./api-keys.js";
+export { providerDiscoveryService } from "./provider-discovery.js";
 export { companyPortabilityService } from "./company-portability.js";
 export { executionWorkspaceService } from "./execution-workspaces.js";
 export { workspaceOperationService } from "./workspace-operations.js";

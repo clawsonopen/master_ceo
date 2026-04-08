@@ -820,3 +820,26 @@ This section records agreed design intent. It is not a statement of current impl
   - proposal -> validation -> canary -> production
 - Optional future extension:
   - company-level provider key overrides on top of global instance keys.
+
+---
+
+## 2026-04-08 Delta Snapshot
+
+### New/updated implementation points
+- `paperclip/server/src/services/master-company.ts`
+  - Master hierarchy seed expanded with `Model Research Router Agent`.
+  - protected master agents standardized with `canCreateAgents: true`.
+  - seeded router/model-research capabilities + inline `SKILLS.md` content.
+- `paperclip/server/src/onboarding-assets/model-research-router/SKILLS.md`
+  - default skill profile for router/model research role.
+- `paperclip/server/src/routes/agents.ts`
+  - create/hire flow now enforces `canCreateAgents: true` defaults for `company_type = master`.
+- `paperclip/server/src/index.ts`
+  - startup seed logging now includes new model-router seed flag.
+- `paperclip/server/src/__tests__/master-company-service.test.ts`
+  - seed test updated for third protected master agent.
+
+### Planned next mapping (Phase 3B)
+- provider docs discovery module for Router Agent + Model Research Agent
+- metadata extraction flow (auth scheme, test endpoint, model listing endpoint)
+- validation/publish path for Enforcer consumption

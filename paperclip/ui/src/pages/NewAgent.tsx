@@ -133,7 +133,14 @@ export function NewAgent() {
 
   function buildAdapterConfig() {
     const adapter = getUIAdapter(configValues.adapterType);
-    return adapter.buildAdapterConfig(configValues);
+    const built = adapter.buildAdapterConfig(configValues);
+    const routerProvider = configValues.routerProvider?.trim() ?? "";
+    const routerModel = configValues.routerModel?.trim() ?? "";
+    const routerDecisionNote = configValues.routerDecisionNote?.trim() ?? "";
+    if (routerProvider) built.routerProvider = routerProvider;
+    if (routerModel) built.routerModel = routerModel;
+    if (routerDecisionNote) built.routerDecisionNote = routerDecisionNote;
+    return built;
   }
 
   function handleSubmit() {
@@ -170,6 +177,7 @@ export function NewAgent() {
     createAgent.mutate({
       name: name.trim(),
       role: effectiveRole,
+      permissions: effectiveRole === "ceo" ? { canCreateAgents: true } : undefined,
       ...(title.trim() ? { title: title.trim() } : {}),
       ...(reportsTo ? { reportsTo } : {}),
       ...(selectedSkillKeys.length > 0 ? { desiredSkills: selectedSkillKeys } : {}),

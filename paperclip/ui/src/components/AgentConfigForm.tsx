@@ -8,6 +8,7 @@ import type {
 } from "@paperclipai/shared";
 import type { AdapterModel } from "../api/agents";
 import { agentsApi } from "../api/agents";
+import { apiKeysApi } from "../api/apiKeys";
 import { secretsApi } from "../api/secrets";
 import { assetsApi } from "../api/assets";
 import {
@@ -22,7 +23,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, Heart, ChevronDown, X } from "lucide-react";
+import { FolderOpen, Heart, ChevronDown, X, Sparkles } from "lucide-react";
 import { cn } from "../lib/utils";
 import { extractModelName, extractProviderId } from "../lib/model-utils";
 import { queryKeys } from "../lib/queryKeys";
@@ -352,6 +353,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   });
   const detectedModel = detectedModelData?.model ?? null;
   const detectedModelCandidates = detectedModelData?.candidates ?? [];
+  const { data: routerCatalog = [] } = useQuery({
+    queryKey: queryKeys.instance.apiKeys,
+    queryFn: () => apiKeysApi.routerCatalog(),
+    enabled: Boolean(selectedCompanyId),
+  });
 
   const targetCompanyId = !isCreate ? props.agent.companyId : selectedCompanyId;
   const masterCompanyId = useMemo(
@@ -430,6 +436,50 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const currentModelId = isCreate
     ? val!.model
     : eff("adapterConfig", "model", String(config.model ?? ""));
+  const currentRouterProvider = isCreate
+    ? (val!.routerProvider ?? "")
+    : eff("adapterConfig", "routerProvider", String(config.routerProvider ?? ""));
+  const currentRouterModel = isCreate
+    ? (val!.routerModel ?? "")
+    : eff("adapterConfig", "routerModel", String(config.routerModel ?? ""));
+  const currentRouterDecisionNote = isCreate
+    ? (val!.routerDecisionNote ?? "")
+    : eff("adapterConfig", "routerDecisionNote", String(config.routerDecisionNote ?? ""));
+  const currentRouterTaskHint = isCreate
+    ? (val!.routerTaskHint ?? "")
+    : eff("adapterConfig", "routerTaskHint", String(config.routerTaskHint ?? ""));
+  const currentRouterPreference = isCreate
+    ? (val!.routerPreference ?? "balanced")
+    : eff("adapterConfig", "routerPreference", String(config.routerPreference ?? "balanced"));
+  const routerModelsForSelectedProvider = useMemo(() => {
+    const selected = routerCatalog.find((entry) => entry.provider === currentRouterProvider);
+    return selected?.models ?? [];
+  }, [routerCatalog, currentRouterProvider]);
+  const routerRecommendation = useMutation({
+    mutationFn: () =>
+      apiKeysApi.routerRecommendation({
+        taskSummary: currentRouterTaskHint,
+        preference:
+          currentRouterPreference === "quality" ||
+          currentRouterPreference === "speed" ||
+          currentRouterPreference === "cost"
+            ? currentRouterPreference
+            : "balanced",
+      }),
+    onSuccess: (data) => {
+      if (isCreate) {
+        set!({
+          routerProvider: data.provider,
+          routerModel: data.model,
+          routerDecisionNote: data.reason,
+        });
+      } else {
+        mark("adapterConfig", "routerProvider", data.provider);
+        mark("adapterConfig", "routerModel", data.model);
+        mark("adapterConfig", "routerDecisionNote", data.reason);
+      }
+    },
+  });
 
   const thinkingEffortKey =
     adapterType === "codex_local"
@@ -778,6 +828,128 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 detectModelLabel="Detect model"
                 emptyDetectHint="No model detected. Select or enter one manually."
               />
+              <div className="rounded-md border border-border p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-medium text-muted-foreground">Router Agent Assignment</div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => routerRecommendation.mutate()}
+                    disabled={routerRecommendation.isPending || routerCatalog.length === 0}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {routerRecommendation.isPending ? "Thinking..." : "Ask Router Agent"}
+                  </Button>
+                </div>
+                <Field
+                  label="Provider"
+                  hint="Master CEO / CEO agents can assign provider here; Router Agent may auto-fill."
+                >
+                  <select
+                    className={inputClass}
+                    value={currentRouterProvider}
+                    onChange={(e) =>
+                      isCreate
+                        ? set!({ routerProvider: e.target.value })
+                        : mark("adapterConfig", "routerProvider", e.target.value || undefined)
+                    }
+                  >
+                    <option value="">Select provider</option>
+                    {routerCatalog.map((entry) => (
+                      <option key={entry.provider} value={entry.provider}>
+                        {entry.provider}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Model" hint="Choose one of provider models or enter manually.">
+                  <div className="space-y-2">
+                    {routerModelsForSelectedProvider.length > 0 ? (
+                      <select
+                        className={inputClass}
+                        value={
+                          routerModelsForSelectedProvider.includes(currentRouterModel)
+                            ? currentRouterModel
+                            : ""
+                        }
+                        onChange={(e) =>
+                          isCreate
+                            ? set!({ routerModel: e.target.value })
+                            : mark("adapterConfig", "routerModel", e.target.value || undefined)
+                        }
+                      >
+                        <option value="">Select provider model</option>
+                        {routerModelsForSelectedProvider.map((model) => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <DraftInput
+                      value={currentRouterModel}
+                      onCommit={(v) =>
+                        isCreate
+                          ? set!({ routerModel: v })
+                          : mark("adapterConfig", "routerModel", v || undefined)
+                      }
+                      immediate
+                      className={inputClass}
+                      placeholder="provider/model"
+                    />
+                  </div>
+                </Field>
+                <Field label="Task Hint" hint="Used by Router Agent recommendation.">
+                  <DraftInput
+                    value={currentRouterTaskHint}
+                    onCommit={(v) =>
+                      isCreate
+                        ? set!({ routerTaskHint: v })
+                        : mark("adapterConfig", "routerTaskHint", v || undefined)
+                    }
+                    immediate
+                    className={inputClass}
+                    placeholder="e.g. deep code review with strict quality"
+                  />
+                </Field>
+                <Field label="Routing Preference" hint="Balanced is default.">
+                  <select
+                    className={inputClass}
+                    value={currentRouterPreference}
+                    onChange={(e) =>
+                      isCreate
+                        ? set!({ routerPreference: e.target.value as CreateConfigValues["routerPreference"] })
+                        : mark("adapterConfig", "routerPreference", e.target.value || "balanced")
+                    }
+                  >
+                    <option value="balanced">balanced</option>
+                    <option value="quality">quality</option>
+                    <option value="speed">speed</option>
+                    <option value="cost">cost</option>
+                  </select>
+                </Field>
+                <Field label="Router Decision Note" hint="Latest Router Agent assignment reason.">
+                  <textarea
+                    className={inputClass}
+                    value={currentRouterDecisionNote}
+                    onChange={(e) =>
+                      isCreate
+                        ? set!({ routerDecisionNote: e.target.value })
+                        : mark("adapterConfig", "routerDecisionNote", e.target.value || undefined)
+                    }
+                    placeholder="Router Agent decision details..."
+                  />
+                </Field>
+                {routerRecommendation.error && (
+                  <p className="text-xs text-destructive">
+                    {routerRecommendation.error instanceof Error
+                      ? routerRecommendation.error.message
+                      : "Router recommendation failed."}
+                  </p>
+                )}
+              </div>
               {fetchedModelsError && (
                 <p className="text-xs text-destructive">
                   {fetchedModelsError instanceof Error

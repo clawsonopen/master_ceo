@@ -389,6 +389,11 @@ export interface CreateConfigValues {
   maxTurnsPerRun: number;
   heartbeatEnabled: boolean;
   intervalSec: number;
+  routerProvider?: string;
+  routerModel?: string;
+  routerDecisionNote?: string;
+  routerTaskHint?: string;
+  routerPreference?: "balanced" | "quality" | "speed" | "cost";
   /** Arbitrary key-value pairs populated by schema-driven config fields. */
   adapterSchemaValues?: Record<string, unknown>;
 }

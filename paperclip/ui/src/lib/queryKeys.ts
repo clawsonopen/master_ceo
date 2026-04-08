@@ -97,6 +97,7 @@ export const queryKeys = {
     generalSettings: ["instance", "general-settings"] as const,
     schedulerHeartbeats: ["instance", "scheduler-heartbeats"] as const,
     experimentalSettings: ["instance", "experimental-settings"] as const,
+    apiKeys: ["instance", "api-keys"] as const,
   },
   health: ["health"] as const,
   secrets: {

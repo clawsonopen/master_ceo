@@ -117,6 +117,29 @@ export function agentRoutes(db: Db) {
     return Boolean((agent.permissions as Record<string, unknown>).canCreateAgents);
   }
 
+  async function getCompanyType(companyId: string): Promise<string | null> {
+    const row = await db
+      .select({ companyType: companies.companyType })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .then((rows) => rows[0] ?? null);
+    return row?.companyType ?? null;
+  }
+
+  function withDefaultCreateAgentPermissions(
+    role: string,
+    companyType: string | null,
+    permissions: Record<string, unknown> | null | undefined,
+  ): Record<string, unknown> | null | undefined {
+    if (role === "ceo" || companyType === "master") {
+      return {
+        ...((permissions ?? {}) as Record<string, unknown>),
+        canCreateAgents: true,
+      };
+    }
+    return permissions;
+  }
+
   async function buildAgentAccessState(agent: NonNullable<Awaited<ReturnType<typeof svc.getById>>>) {
     const membership = await access.getMembership(agent.companyId, "agent", agent.id);
     const grants = membership
@@ -1318,11 +1341,6 @@ export function agentRoutes(db: Db) {
       hireInput.adapterType,
       normalizedAdapterConfig,
     );
-    const normalizedHireInput = {
-      ...hireInput,
-      adapterConfig: normalizedAdapterConfig,
-    };
-
     const company = await db
       .select()
       .from(companies)
@@ -1332,6 +1350,16 @@ export function agentRoutes(db: Db) {
       res.status(404).json({ error: "Company not found" });
       return;
     }
+
+    const normalizedHireInput = {
+      ...hireInput,
+      adapterConfig: normalizedAdapterConfig,
+      permissions: withDefaultCreateAgentPermissions(
+        hireInput.role,
+        company.companyType,
+        hireInput.permissions,
+      ),
+    };
 
     const requiresApproval = company.requireBoardApprovalForNewAgents;
     const status = requiresApproval ? "pending_approval" : "idle";
@@ -1488,6 +1516,11 @@ export function agentRoutes(db: Db) {
     const createdAgent = await svc.create(companyId, {
       ...createInput,
       adapterConfig: normalizedAdapterConfig,
+      permissions: withDefaultCreateAgentPermissions(
+        createInput.role,
+        await getCompanyType(companyId),
+        createInput.permissions,
+      ),
       status: "idle",
       spentMonthlyCents: 0,
       lastHeartbeatAt: null,
@@ -1948,7 +1981,7 @@ export function agentRoutes(db: Db) {
     }
 
     const actor = getActorInfo(req);
-    const agent = await svc.update(id, patchData, {
+    let agent = await svc.update(id, patchData, {
       recordRevision: {
         createdByAgentId: actor.agentId,
         createdByUserId: actor.actorType === "user" ? actor.actorId : null,
@@ -1958,6 +1991,12 @@ export function agentRoutes(db: Db) {
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
       return;
+    }
+    if (patchData.role === "ceo" && !agent.permissions?.canCreateAgents) {
+      const updatedPermissions = await svc.updatePermissions(agent.id, { canCreateAgents: true });
+      if (updatedPermissions) {
+        agent = updatedPermissions;
+      }
     }
 
     await logActivity(db, {

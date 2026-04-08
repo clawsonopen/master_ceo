@@ -470,6 +470,7 @@ export async function startServer(): Promise<StartedServer> {
     masterHierarchySeed.masterCompanyCreated
     || masterHierarchySeed.masterCeoCreated
     || masterHierarchySeed.costResearchAgentCreated
+    || masterHierarchySeed.modelResearchRouterAgentCreated
   ) {
     logger.info(masterHierarchySeed, "Ensured master company hierarchy");
   }
