@@ -45,7 +45,13 @@ export interface ProviderDiscoverySuggestion {
   authPrefix: string | null;
   confidence: "low" | "medium" | "high";
   discoveryNotes: string | null;
-  sourceEvidence: Array<{ url: string; note?: string }>;
+  sourceEvidence: Array<{
+    url: string;
+    note?: string;
+    confidenceDelta?: number;
+    matchedText?: string;
+    evidenceType?: "crawl" | "auth" | "endpoint" | "heuristic" | "known_mapping" | "validation";
+  }>;
   discoveredBy: string | null;
   publishedAt: string | null;
   createdAt: string;

@@ -98,6 +98,8 @@ export const queryKeys = {
     schedulerHeartbeats: ["instance", "scheduler-heartbeats"] as const,
     experimentalSettings: ["instance", "experimental-settings"] as const,
     apiKeys: ["instance", "api-keys"] as const,
+    apiKeyProviderDiscoverySuggestions: (provider?: string) =>
+      ["instance", "api-keys", "provider-discovery-suggestions", provider ?? "__all__"] as const,
   },
   health: ["health"] as const,
   secrets: {

@@ -50,6 +50,9 @@ export function InstanceApiKeysSettings() {
   const [providerMetaById, setProviderMetaById] = useState<
     Record<string, { helpUrl?: string; testUrl?: string; testAuthHeader?: string; testAuthPrefix?: string }>
   >({});
+  const [discoveryProviderInput, setDiscoveryProviderInput] = useState("");
+  const [discoverySeedUrlInput, setDiscoverySeedUrlInput] = useState("");
+  const [discoveryFilterProvider, setDiscoveryFilterProvider] = useState("");
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Instance Settings" }, { label: "API Keys" }]);
@@ -58,6 +61,15 @@ export function InstanceApiKeysSettings() {
   const apiKeysQuery = useQuery({
     queryKey: queryKeys.instance.apiKeys,
     queryFn: () => apiKeysApi.list(),
+  });
+  const discoverySuggestionsQuery = useQuery({
+    queryKey: queryKeys.instance.apiKeyProviderDiscoverySuggestions(
+      discoveryFilterProvider.trim().toLowerCase() || undefined,
+    ),
+    queryFn: () =>
+      apiKeysApi.listProviderDiscoverySuggestions(
+        discoveryFilterProvider.trim() ? discoveryFilterProvider.trim().toLowerCase() : undefined,
+      ),
   });
 
   const keyByProvider = useMemo(() => {
@@ -102,6 +114,9 @@ export function InstanceApiKeysSettings() {
 
   const refreshApiKeys = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.instance.apiKeys });
+  };
+  const refreshDiscoverySuggestions = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["instance", "api-keys", "provider-discovery-suggestions"] });
   };
 
   const saveMutation = useMutation({
@@ -197,6 +212,40 @@ export function InstanceApiKeysSettings() {
     },
   });
 
+  const discoverProviderMutation = useMutation({
+    mutationFn: (input: { provider: string; seedUrl?: string | null }) =>
+      apiKeysApi.discoverProviderMetadata(input),
+    onSuccess: async (result) => {
+      setDiscoveryProviderInput(result.provider);
+      setActionError(null);
+      await refreshDiscoverySuggestions();
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "Failed to discover provider metadata.");
+    },
+  });
+
+  const publishDiscoveryMutation = useMutation({
+    mutationFn: (id: string) => apiKeysApi.publishProviderDiscoverySuggestion(id),
+    onSuccess: async (result) => {
+      setActionError(null);
+      setProviderMetaById((prev) => ({
+        ...prev,
+        [result.provider]: {
+          ...(prev[result.provider] ?? {}),
+          helpUrl: result.docsUrl ?? undefined,
+          testUrl: result.testUrl ?? undefined,
+          testAuthHeader: result.authHeader ?? undefined,
+          testAuthPrefix: result.authPrefix ?? undefined,
+        },
+      }));
+      await Promise.all([refreshDiscoverySuggestions(), refreshApiKeys()]);
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "Failed to publish provider metadata.");
+    },
+  });
+
   function removeCustomProviderFromLocalState(providerId: string) {
     setCustomProviderIds((prev) => prev.filter((id) => id !== providerId));
     setProviderConfigOpenById((prev) => {
@@ -276,6 +325,36 @@ export function InstanceApiKeysSettings() {
       key,
       helpUrl: customHelpUrlInput.trim() || null,
       testUrl: customTestUrlInput.trim() || null,
+    });
+  }
+
+  const discoverySuggestions = discoverySuggestionsQuery.data ?? [];
+
+  function confidenceBadgeClass(confidence: "low" | "medium" | "high") {
+    if (confidence === "high") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    if (confidence === "medium") return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300";
+  }
+
+  function statusBadgeClass(status: "suggested" | "published" | "rejected") {
+    if (status === "published") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    if (status === "rejected") return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300";
+    return "border-border bg-muted/40 text-muted-foreground";
+  }
+
+  function startDiscovery() {
+    const provider = discoveryProviderInput.trim().toLowerCase();
+    if (!provider) {
+      setActionError("Provider is required for discovery.");
+      return;
+    }
+    if (!/^[a-z0-9][a-z0-9_-]{1,63}$/.test(provider)) {
+      setActionError("Provider must be 2-64 chars and contain only a-z, 0-9, _ or -");
+      return;
+    }
+    discoverProviderMutation.mutate({
+      provider,
+      seedUrl: discoverySeedUrlInput.trim() || null,
     });
   }
 
@@ -402,6 +481,169 @@ export function InstanceApiKeysSettings() {
           Default auth is <code>{DEFAULT_TEST_AUTH_HEADER}: {DEFAULT_TEST_AUTH_PREFIX} &lt;API_KEY&gt;</code>.
           Most OpenAI-compatible providers work with this.
         </p>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="space-y-4">
+          <div>
+            <div className="text-sm font-semibold">Provider Discovery Suggestions</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Crawl docs and API references to propose auth/test/model metadata, then publish validated suggestions.
+            </p>
+          </div>
+
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <Input
+              value={discoveryProviderInput}
+              onChange={(event) => setDiscoveryProviderInput(event.target.value)}
+              placeholder="provider_id (example: together)"
+            />
+            <Input
+              value={discoverySeedUrlInput}
+              onChange={(event) => setDiscoverySeedUrlInput(event.target.value)}
+              placeholder="optional seed URL (https://provider/docs)"
+            />
+            <Button
+              type="button"
+              onClick={startDiscovery}
+              disabled={discoverProviderMutation.isPending}
+            >
+              {discoverProviderMutation.isPending ? "Discovering..." : "Discover"}
+            </Button>
+          </div>
+
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+            <Input
+              value={discoveryFilterProvider}
+              onChange={(event) => setDiscoveryFilterProvider(event.target.value)}
+              placeholder="filter by provider_id (optional)"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void refreshDiscoverySuggestions()}
+              disabled={discoverySuggestionsQuery.isFetching}
+            >
+              {discoverySuggestionsQuery.isFetching ? "Refreshing..." : "Refresh"}
+            </Button>
+          </div>
+
+          {discoverySuggestionsQuery.error ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {discoverySuggestionsQuery.error instanceof Error
+                ? discoverySuggestionsQuery.error.message
+                : "Failed to load discovery suggestions."}
+            </div>
+          ) : null}
+
+          {discoverySuggestions.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+              No discovery suggestions yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {discoverySuggestions.map((suggestion) => {
+                const isPublishing =
+                  publishDiscoveryMutation.isPending && publishDiscoveryMutation.variables === suggestion.id;
+                return (
+                  <div key={suggestion.id} className="rounded-lg border border-border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold">{suggestion.provider}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 ${statusBadgeClass(suggestion.status)}`}>
+                            status: {suggestion.status}
+                          </span>
+                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 ${confidenceBadgeClass(suggestion.confidence)}`}>
+                            confidence: {suggestion.confidence}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => publishDiscoveryMutation.mutate(suggestion.id)}
+                        disabled={isPublishing || suggestion.status !== "suggested"}
+                      >
+                        {isPublishing ? "Publishing..." : "Publish"}
+                      </Button>
+                    </div>
+
+                    <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                      <div>
+                        <span className="font-medium text-foreground">Docs:</span>{" "}
+                        {suggestion.docsUrl ? (
+                          <a href={suggestion.docsUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                            {suggestion.docsUrl}
+                          </a>
+                        ) : "n/a"}
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">API Reference:</span>{" "}
+                        {suggestion.apiReferenceUrl ? (
+                          <a href={suggestion.apiReferenceUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                            {suggestion.apiReferenceUrl}
+                          </a>
+                        ) : "n/a"}
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">Test Endpoint:</span>{" "}
+                        {suggestion.testUrl ? (
+                          <a href={suggestion.testUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                            {suggestion.testUrl}
+                          </a>
+                        ) : "n/a"}
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">Model List Endpoint:</span>{" "}
+                        {suggestion.modelListUrl ? (
+                          <a href={suggestion.modelListUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                            {suggestion.modelListUrl}
+                          </a>
+                        ) : "n/a"}
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">Auth:</span>{" "}
+                        {suggestion.authMode ?? "n/a"}{" "}
+                        {suggestion.authHeader ? `(${suggestion.authHeader}` : ""}
+                        {suggestion.authPrefix ? ` / ${suggestion.authPrefix}` : ""}
+                        {suggestion.authHeader ? ")" : ""}
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">Updated:</span>{" "}
+                        {new Date(suggestion.updatedAt).toLocaleString()}
+                      </div>
+                    </div>
+
+                    {suggestion.discoveryNotes ? (
+                      <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
+                        {suggestion.discoveryNotes}
+                      </pre>
+                    ) : null}
+
+                    {suggestion.sourceEvidence.length > 0 ? (
+                      <div className="mt-3 space-y-1">
+                        <div className="text-xs font-medium text-foreground">Evidence</div>
+                        <div className="space-y-1">
+                          {suggestion.sourceEvidence.slice(0, 6).map((evidence, index) => (
+                            <div key={`${suggestion.id}-evidence-${index}`} className="text-xs text-muted-foreground">
+                              <a href={evidence.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                                {evidence.url}
+                              </a>
+                              {evidence.evidenceType ? ` [${evidence.evidenceType}]` : ""}
+                              {typeof evidence.confidenceDelta === "number" ? ` Δ${evidence.confidenceDelta.toFixed(2)}` : ""}
+                              {evidence.note ? ` - ${evidence.note}` : ""}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </section>
 
       {actionError && (
