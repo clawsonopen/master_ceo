@@ -179,18 +179,26 @@ Do NOT write any code. Analysis only.
 
 ---
 
-## 2026-04-08 Status Addendum
+## 2026-04-08 Status Addendum (Current As-Built)
 
-### Phase 3 progress update
-- Added default protected master agent: `Model Research Router Agent`.
-- Master-company agent creation now defaults to `canCreateAgents: true` for consistency.
-- Seeded router/model-research skill profile and default routing guidance.
+### Phase 3 completed milestones
+- Master hierarchy expanded to 4 protected agents (`Master CEO`, `Cost & Provider Research Agent`, `Model Research Router Agent`, `AI News and Releases Agent`).
+- Master-company create/hire defaults now consistently grant `canCreateAgents: true`.
+- Phase 3B provider discovery is implemented:
+  - discovery crawl + parser + extraction + confidence scoring
+  - suggestion list + publish validation gate
+  - validated metadata publish into `api_keys` metadata
+- Phase 3B UI is implemented for discovery suggestions and publish actions.
 
-### Phase 3B scope (planned)
-- Router Agent + Model Research Agent web-discovery loop for custom providers.
-- Automatic provider-doc crawl and extraction of:
-  - auth header scheme
-  - test endpoint URL
-  - model listing endpoint
-  - initial provider model catalog
-- Persist discovered metadata as suggested config first, then Enforcer-validated activation.
+### Additional hardening completed
+- Managed instruction bundles standardized to 5 files:
+  - `AGENTS.md`, `HEARTBEAT.md`, `SOUL.md`, `TOOLS.md`, `SKILLS.md`
+- Implicit adapter fallback removal:
+  - explicit adapter selection is now required in create/onboarding/invite/import flows.
+- Org + approval behavior finalized:
+  - pending-assignment restriction is policy-based (`requireBoardApprovalForNewAgents`)
+  - org chart root/layer rendering fixed for cross-company master-manager relationships
+  - clearer pending-assignment error messages added.
+
+### Remaining high-level roadmap
+- Phases 4-9 remain roadmap items.

@@ -803,43 +803,39 @@ Migration runner: `packages/db/src/migrate.ts` using `drizzle-orm/migrator`.
 
 *Document created: 2026-04-06 | Phase 1 (Codebase Understanding) | Zero code changes*
 
-## Planned Architecture Notes (Phase 3, Not Yet Implemented)
-
-This section records agreed design intent. It is not a statement of current implementation.
-
-- Model routing will be split into:
-  - Router Agent (AI reasoning and recommendation output)
-  - Router Enforcer (deterministic runtime safety checks)
-- Cost Research Agent will feed live provider/model/quota intelligence into routing decisions.
-- Master CEO will combine Router recommendations and research updates for strategic selection.
-- Safety checks remain mandatory at execution time:
-  - provider/model requires available API key
-  - exhausted quota/rate-limit triggers fallback or fail-fast with reason
-  - policy/budget violations block execution with actionable feedback
-- Parameter evolution path:
-  - proposal -> validation -> canary -> production
-- Optional future extension:
-  - company-level provider key overrides on top of global instance keys.
-
----
-
-## 2026-04-08 Delta Snapshot
+## 2026-04-08 Delta Snapshot (Current As-Built)
 
 ### New/updated implementation points
 - `paperclip/server/src/services/master-company.ts`
-  - Master hierarchy seed expanded with `Model Research Router Agent`.
-  - protected master agents standardized with `canCreateAgents: true`.
-  - seeded router/model-research capabilities + inline `SKILLS.md` content.
-- `paperclip/server/src/onboarding-assets/model-research-router/SKILLS.md`
-  - default skill profile for router/model research role.
+  - Master hierarchy seed expanded to 4 protected master agents:
+    - Master CEO
+    - Cost & Provider Research Agent
+    - Model Research Router Agent
+    - AI News and Releases Agent
+  - protected master agents standardized with `canCreateAgents: true`
+  - default managed instruction bundles and routines seeded for protected agents
 - `paperclip/server/src/routes/agents.ts`
-  - create/hire flow now enforces `canCreateAgents: true` defaults for `company_type = master`.
-- `paperclip/server/src/index.ts`
-  - startup seed logging now includes new model-router seed flag.
-- `paperclip/server/src/__tests__/master-company-service.test.ts`
-  - seed test updated for third protected master agent.
+  - create/hire flow enforces `canCreateAgents: true` defaults for `company_type = master`
+  - new-agent default instruction materialization includes:
+    - `AGENTS.md`, `HEARTBEAT.md`, `SOUL.md`, `TOOLS.md`, `SKILLS.md`
+  - explicit adapter selection UX hardening support (paired with UI updates)
+- `paperclip/server/src/services/provider-discovery.ts` + related routes
+  - discovery crawl/parser/extraction pipeline
+  - confidence scoring and evidence-backed suggestions
+  - publish validation gate and validated metadata write path
+- `paperclip/ui/src/pages/InstanceSettings.tsx` and API-key settings surfaces
+  - Provider Discovery Suggestions UX (discover/refresh/filter/publish, evidence/confidence display)
+- `paperclip/ui/src/components/agent-config-defaults.ts`, `NewAgent.tsx`, `OnboardingWizard.tsx`,
+  `InviteLanding.tsx`, `CompanyImport.tsx`, `AgentConfigForm.tsx`
+  - implicit `claude_local` fallback removed
+  - adapter type must be chosen explicitly in creation/join/import flows
+- `paperclip/server/src/services/agents.ts`
+  - org tree builder preserves local roots when `reportsTo` points to cross-company manager (master)
+- `paperclip/server/src/services/issues.ts`, `paperclip/server/src/services/routines.ts`
+  - pending-approval assignment errors made actionable ("approve pending hire first")
 
-### Planned next mapping (Phase 3B)
-- provider docs discovery module for Router Agent + Model Research Agent
-- metadata extraction flow (auth scheme, test endpoint, model listing endpoint)
-- validation/publish path for Enforcer consumption
+### Validation snapshot
+- Provider discovery and API-key settings tests: passing
+- Master-company seed tests: passing
+- Org reporting regression test (`agent-master-reports-to.test.ts`): passing
+- Server/UI typecheck: passing

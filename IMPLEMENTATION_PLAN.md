@@ -746,28 +746,38 @@ Full Turkish language support for all UI elements and agent communication.
 
 ---
 
-## 2026-04-08 Update (Phase 3A)
+## 2026-04-08 Current State (Supersedes prior Phase 3A-only note)
 
 ### Completed in codebase
-- Master hierarchy seed now creates a third protected master agent: `Model Research Router Agent`.
-- Seeded protected agents under Master Company now all have `canCreateAgents: true`.
-- New master agent defaults include seeded capabilities + `SKILLS.md`-style instruction content for routing/model research.
-- New agent creation/hire flow now enforces `canCreateAgents: true` by default for all agents created inside `company_type = master`.
+- Master hierarchy now has 4 protected agents:
+  - `Master CEO`
+  - `Cost & Provider Research Agent`
+  - `Model Research Router Agent`
+  - `AI News and Releases Agent`
+- Master-company personnel defaults:
+  - create/hire paths default to `canCreateAgents: true` in `company_type = master`
+  - protected instruction editing is supported with warning + explicit unlock flow
+- Provider discovery (Phase 3B) is implemented end-to-end:
+  - crawl/discovery worker
+  - API reference parsing
+  - auth/test/model endpoint extraction
+  - confidence scoring
+  - publish validation gate
+  - validated publish into `api_keys` metadata
+- Discovery UI is implemented:
+  - Provider Discovery Suggestions
+  - Discover / Refresh / Filter / Publish
+  - confidence + evidence rendering
+- Default instruction materialization updated:
+  - managed bundles include `AGENTS.md`, `HEARTBEAT.md`, `SOUL.md`, `TOOLS.md`, `SKILLS.md`
+  - regular-company defaults include `TOOLS.md` template and rationale text
+- Runtime adapter selection hardening:
+  - implicit `claude_local` fallbacks removed in create/onboarding/invite/import flows
+  - explicit adapter choice is required in UI
+- Org/pending-approval behavior finalized:
+  - pending assignment block is tied to `requireBoardApprovalForNewAgents` (not API key availability)
+  - org tree preserves local roots when manager is cross-company (master)
+  - pending-approval conflict messages now include actionable guidance
 
-### Added now (router/model skills)
-- `router_assignment`
-- `model_research`
-- `provider_catalog_curation`
-- `cost_performance_tradeoff_analysis`
-- `provider_key_health_awareness`
-- `deterministic_decision_logging`
-
-### Planned next (Phase 3B)
-- Provider docs auto-discovery via Router Agent + Model Research Agent:
-  - discover provider docs root from Provider ID
-  - crawl API reference pages and subpages
-  - infer auth scheme/header format (OpenAI-compatible first)
-  - infer test endpoint candidates (prefer model list endpoint)
-  - infer live model-list endpoint and model ids
-  - write normalized provider metadata for Enforcer-safe runtime use
-- Keep deterministic safety boundary: Enforcer executes only validated metadata.
+### Remaining from this plan
+- Phase 4+ items in this document remain as roadmap/planned work.

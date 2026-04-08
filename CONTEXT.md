@@ -71,9 +71,28 @@ and gets a fully autonomous AI holding company that:
 - Extra ~150MB bundle size is irrelevant when user downloads 9-18GB Gemma 4 model
 ---
 
-## 2026-04-08 Context Update
+## 2026-04-08 Context Update (Current As-Built)
 
-- Master Company now includes a default `Model Research Router Agent` in addition to Master CEO and Cost Research Agent.
-- Master-company staffing policy now defaults to `canCreateAgents: true` for newly created/hired agents.
-- Router/model assignment foundation is now prepared for a Phase 3B provider-doc auto-discovery system.
-- Phase 3B target: Router Agent + Model Research Agent should discover provider API docs, crawl subpages, and propose auth/test/model metadata automatically under deterministic safety constraints.
+- Master Company now includes 4 protected agents:
+  - Master CEO
+  - Cost & Provider Research Agent
+  - Model Research Router Agent
+  - AI News and Releases Agent
+- Master-company staffing policy defaults to `canCreateAgents: true` for newly created/hired agents.
+- Phase 3B provider-doc auto-discovery is implemented:
+  - docs discovery + crawl + parser
+  - auth/test/model endpoint extraction
+  - confidence + evidence scoring
+  - validation-gated publish into runtime metadata
+- Provider Discovery Suggestions UI is live with discover/refresh/filter/publish actions.
+- Instruction defaults were expanded and standardized:
+  - managed bundle files include `AGENTS.md`, `HEARTBEAT.md`, `SOUL.md`, `TOOLS.md`, `SKILLS.md`
+  - regular-company default `TOOLS.md` rationale improved
+- Adapter neutrality hardening is in place:
+  - no adapter is mandatory
+  - implicit Claude default removed in create/onboarding/invite/import flows
+  - adapter must be selected explicitly
+- Org and approval behavior is clarified and fixed:
+  - pending assignment block is policy-driven (`requireBoardApprovalForNewAgents`)
+  - org chart preserves local roots under cross-company master reporting
+  - pending assignment errors now include direct approval guidance.

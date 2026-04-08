@@ -579,23 +579,31 @@ Design principle:
 
 ---
 
-## 2026-04-08 Architecture Delta
+## 2026-04-08 Architecture Delta (Current As-Built)
 
 ### Master hierarchy runtime
 - Protected master agents now include:
   - Master CEO
   - Cost & Provider Research Agent
   - Model Research Router Agent
-- Master-company personnel policy now standardizes `canCreateAgents: true` by default at create/hire time.
+  - AI News and Releases Agent
+- Master-company personnel policy standardizes `canCreateAgents: true` by default at create/hire time.
 
 ### Router architecture update
-- Model Research Router Agent now holds default assignment context (provider/model preference, task-hint-aware recommendation notes).
+- Model Research Router Agent holds default assignment context (provider/model preference, task-hint-aware recommendation notes).
 - Router Enforcer remains deterministic gatekeeper for runtime safety.
 
-### Planned 3B discovery subsystem
-- Add provider-doc discovery pipeline:
+### Provider discovery subsystem (implemented)
+- Provider-doc discovery pipeline is active:
   - Provider ID -> docs URL discovery
   - controlled crawl of API reference subpages
   - extraction of auth/test/model-list metadata
-  - confidence-scored suggestions for human or policy approval
-- Enforcer consumes only validated metadata snapshots.
+  - confidence-scored suggestions
+- Publish flow is validation-gated:
+  - only validated suggestions are published
+  - validated metadata is persisted into `api_keys` metadata for runtime consumption.
+
+### UI/runtime guardrail updates
+- Discovery suggestions are exposed in UI with evidence/confidence and explicit publish controls.
+- Adapter selection is explicit across new-agent, onboarding, invite, and import flows (no implicit Claude default).
+- Org-chart tree builder preserves local roots even when `reportsTo` points to a cross-company master manager.
