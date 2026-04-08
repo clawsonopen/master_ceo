@@ -201,4 +201,22 @@ Do NOT write any code. Analysis only.
   - clearer pending-assignment error messages added.
 
 ### Remaining high-level roadmap
-- Phases 4-9 remain roadmap items.
+- Phase 4 completed on 2026-04-09 (including hardening follow-up).
+- Remaining roadmap items are Phases 5-9.
+
+---
+
+## 2026-04-09 Status Addendum (Phase 4 Closed)
+
+### Phase 4 delivered
+- Knowledge Base core services and routes are live (scaffold, indexing, semantic search, scoped access).
+- sqlite-vec integration is live with deterministic fallback behavior.
+- Policy audit metrics are persisted with retention/rollup/archive maintenance.
+- Dashboard policy analytics cards are live.
+- KB file manager UI is live at `/knowledge-base`.
+
+### Phase 4 hardening delivered
+- Extended KB route integration tests (agent deny/success paths).
+- KB UI regression tests.
+- sqlite-vec benchmark report generated and documented.
+- Shared global i18n provider + utilities introduced for consistent UI localization expansion.

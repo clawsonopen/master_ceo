@@ -607,3 +607,36 @@ Design principle:
 - Discovery suggestions are exposed in UI with evidence/confidence and explicit publish controls.
 - Adapter selection is explicit across new-agent, onboarding, invite, and import flows (no implicit Claude default).
 - Org-chart tree builder preserves local roots even when `reportsTo` points to a cross-company master manager.
+
+---
+
+## 2026-04-09 Architecture Delta (Phase 4 As-Built)
+
+### Knowledge Base service layer
+- `server/src/services/knowledge-base/*` now provides:
+  - file manager scaffold/watcher
+  - indexer/chunking/embedding fallback
+  - semantic search with scoped filtering
+  - runtime orchestration
+  - policy audit metrics and snapshot persistence
+
+### API surface
+- `server/src/routes/knowledge-base.ts` exposes:
+  - `search`, `read`, `write`, `list`, `wiki-entry`, `health`, `benchmark`, `policy-metrics`
+- Agent calls are scope-gated via `kb_access`; board has full oversight endpoints.
+
+### Policy telemetry + analytics path
+- Decision sampling supports:
+  - env-configured sampling baseline
+  - traffic-aware sampling auto-adjustment
+  - always-record safety rules for key deny/critical events
+- Persisted analytics actions in `activity_log`:
+  - `kb.policy_metrics.snapshot`
+  - `kb.policy_metrics.rollup.daily`
+  - `kb.policy_metrics.rollup.monthly`
+  - `kb.policy_metrics.archive.export`
+
+### UI integration
+- New page: `ui/src/pages/KnowledgeBase.tsx` (`/knowledge-base` route).
+- Dashboard includes deny-rate trend/action/scope analytics from KB policy metrics.
+- Shared i18n provider baseline exists in UI (`ui/src/context/I18nContext.tsx`).

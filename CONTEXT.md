@@ -143,3 +143,16 @@ and gets a fully autonomous AI holding company that:
   - KB deny trend window selection: `24h | 7d | 30d`
   - deny trend supports action/scope query filters
   - deny-by-action and deny-by-scope cards are clickable and drive trend filtering
+
+---
+
+## 2026-04-09 Phase 4 Closure Update
+
+- Phase 4 (Knowledge Base) is closed as feature-complete and hardening-complete.
+- Implemented and validated:
+  - KB scaffold/runtime/index/search/access control
+  - watcher-based auto-indexing
+  - policy telemetry metrics + dashboard policy cards
+  - KB file manager UI (`/knowledge-base`)
+  - sqlite-vec benchmark comparison report
+- UI localization baseline is now centralized with a shared `I18nProvider` and translation utilities.

@@ -839,3 +839,38 @@ Migration runner: `packages/db/src/migrate.ts` using `drizzle-orm/migrator`.
 - Master-company seed tests: passing
 - Org reporting regression test (`agent-master-reports-to.test.ts`): passing
 - Server/UI typecheck: passing
+
+---
+
+## 2026-04-09 Delta Snapshot (Phase 4 + Hardening)
+
+### New backend modules
+- `paperclip/server/src/services/knowledge-base/`
+  - `file-manager.ts`
+  - `indexer.ts`
+  - `searcher.ts`
+  - `embeddings.ts`
+  - `access.ts`
+  - `scopes.ts`
+  - `runtime.ts`
+  - `policy-audit.ts`
+- `paperclip/server/src/routes/knowledge-base.ts`
+
+### New/expanded backend tests
+- `paperclip/server/src/__tests__/knowledge-base-service.test.ts`
+- `paperclip/server/src/__tests__/knowledge-base-policy-audit.test.ts`
+- `paperclip/server/src/__tests__/knowledge-base-routes.test.ts`
+
+### New UI surface
+- `paperclip/ui/src/pages/KnowledgeBase.tsx`
+- `paperclip/ui/src/api/knowledgeBase.ts`
+- Sidebar + app routing updated for `/knowledge-base`.
+
+### i18n baseline standardization (UI)
+- `paperclip/ui/src/context/I18nContext.tsx`
+- `paperclip/ui/src/i18n/messages.ts`
+- `paperclip/ui/src/lib/i18n.ts`
+- `paperclip/ui/src/lib/i18n.test.ts`
+
+### Benchmark/report artifact
+- `paperclip/report/2026-04-09-kb-sqlite-vec-benchmark.md`

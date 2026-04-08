@@ -780,4 +780,32 @@ Full Turkish language support for all UI elements and agent communication.
   - pending-approval conflict messages now include actionable guidance
 
 ### Remaining from this plan
-- Phase 4+ items in this document remain as roadmap/planned work.
+- Phase 4 is complete as of 2026-04-09 (feature + hardening pass).
+- Remaining roadmap starts from Phase 5 onward.
+
+---
+
+## 2026-04-09 Phase 4 Completion Addendum
+
+### Completed (as-built)
+- Knowledge Base runtime and filesystem scaffold are implemented.
+- SQLite memory integration is implemented with sqlite-vec support and safe fallback path.
+- Indexer/chunking/embedding fallback and semantic search with scope filtering are implemented.
+- Paperclip KB tool/route surface is implemented (`search/read/write/list/wiki-entry/health/benchmark`).
+- Access control guardrails and watcher-based auto-indexing are implemented.
+- Policy audit metrics pipeline is implemented (sampling + snapshots + retention + rollup + archive export).
+- Dashboard policy cards are implemented (deny trend + deny by action + deny by scope).
+- KB UI File Manager is implemented (`/knowledge-base`) with i18n-friendly key-based text usage.
+
+### Hardening completed
+- Route integration coverage expanded for deny/success flows (read/list/wiki-entry).
+- KB UI regression tests added for search/save interactions.
+- sqlite-vec benchmark report captured (vec-required vs fallback comparison):
+  - `paperclip/report/2026-04-09-kb-sqlite-vec-benchmark.md`
+- Global UI i18n standardization baseline added:
+  - central `I18nProvider`
+  - shared message catalog + translation utility layer
+
+### Residual risks (known, accepted)
+- sqlite-vec may not outperform fallback in tiny smoke datasets; benefit is expected with larger corpora.
+- Full app-wide i18n migration is not complete yet; baseline framework is now in place.
