@@ -105,7 +105,7 @@ export function OnboardingWizard() {
 
   // Step 2
   const [agentName, setAgentName] = useState("CEO");
-  const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
+  const [adapterType, setAdapterType] = useState<AdapterType>("");
   const [model, setModel] = useState("");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
@@ -195,10 +195,15 @@ export function OnboardingWizard() {
       ? queryKeys.agents.adapterModels(createdCompanyId, adapterType)
       : ["agents", "none", "adapter-models", adapterType],
     queryFn: () => agentsApi.adapterModels(createdCompanyId!, adapterType),
-    enabled: Boolean(createdCompanyId) && effectiveOnboardingOpen && step === 2
+    enabled:
+      Boolean(createdCompanyId) &&
+      effectiveOnboardingOpen &&
+      step === 2 &&
+      adapterType.trim().length > 0
   });
   const NONLOCAL_TYPES = new Set(["process", "http", "openclaw_gateway"]);
-  const isLocalAdapter = !NONLOCAL_TYPES.has(adapterType);
+  const hasAdapterType = adapterType.trim().length > 0;
+  const isLocalAdapter = hasAdapterType && !NONLOCAL_TYPES.has(adapterType);
 
   // Build adapter grids dynamically from the UI registry + display metadata.
   // External/plugin adapters automatically appear with generic defaults.
@@ -223,7 +228,9 @@ export function OnboardingWizard() {
   };
   const effectiveAdapterCommand =
     command.trim() ||
-    (COMMAND_PLACEHOLDERS[adapterType] ?? adapterType.replace(/_local$/, ""));
+    (adapterType
+      ? (COMMAND_PLACEHOLDERS[adapterType] ?? adapterType.replace(/_local$/, ""))
+      : "");
 
   useEffect(() => {
     if (step !== 2) return;
@@ -284,7 +291,7 @@ export function OnboardingWizard() {
     setCompanyName("");
     setCompanyGoal("");
     setAgentName("CEO");
-    setAdapterType("claude_local");
+    setAdapterType("");
     setModel("");
     setCommand("");
     setArgs("");
@@ -310,6 +317,9 @@ export function OnboardingWizard() {
   }
 
   function buildAdapterConfig(): Record<string, unknown> {
+    if (!hasAdapterType) {
+      throw new Error("Choose an adapter before continuing.");
+    }
     const adapter = getUIAdapter(adapterType);
     const config = adapter.buildAdapterConfig({
       ...defaultCreateValues,
@@ -352,6 +362,10 @@ export function OnboardingWizard() {
       setAdapterEnvError(
         "Create or select a company before testing adapter environment."
       );
+      return null;
+    }
+    if (!hasAdapterType) {
+      setAdapterEnvError("Choose an adapter before running the environment test.");
       return null;
     }
     setAdapterEnvLoading(true);
@@ -414,6 +428,10 @@ export function OnboardingWizard() {
 
   async function handleStep2Next() {
     if (!createdCompanyId) return;
+    if (!hasAdapterType) {
+      setError("Choose an adapter before creating the agent.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -968,7 +986,7 @@ export function OnboardingWizard() {
                           size="sm"
                           variant="outline"
                           className="h-7 px-2.5 text-xs"
-                          disabled={adapterEnvLoading}
+                          disabled={adapterEnvLoading || !hasAdapterType}
                           onClick={() => void runAdapterEnvironmentTest()}
                         >
                           {adapterEnvLoading ? "Testing..." : "Test now"}
@@ -1226,8 +1244,8 @@ export function OnboardingWizard() {
                     <Button
                       size="sm"
                       disabled={
-                        !agentName.trim() || loading || adapterEnvLoading
-                      }
+                          !agentName.trim() || !hasAdapterType || loading || adapterEnvLoading
+                        }
                       onClick={handleStep2Next}
                     >
                       {loading ? (

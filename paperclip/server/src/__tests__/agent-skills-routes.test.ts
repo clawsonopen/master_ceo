@@ -367,7 +367,13 @@ describe("agent skill routes", () => {
         id: "11111111-1111-4111-8111-111111111111",
         adapterType: "claude_local",
       }),
-      { "AGENTS.md": "You are QA." },
+      expect.objectContaining({
+        "AGENTS.md": "You are QA.",
+        "HEARTBEAT.md": expect.stringContaining("Run this checklist"),
+        "SOUL.md": expect.stringContaining("execution-oriented"),
+        "TOOLS.md": expect.any(String),
+        "SKILLS.md": expect.stringContaining("- paperclip"),
+      }),
       { entryFile: "AGENTS.md", replaceExisting: false },
     );
     expect(mockAgentService.update).toHaveBeenCalledWith(
@@ -408,7 +414,8 @@ describe("agent skill routes", () => {
         "AGENTS.md": expect.stringContaining("You are the CEO."),
         "HEARTBEAT.md": expect.stringContaining("CEO Heartbeat Checklist"),
         "SOUL.md": expect.stringContaining("CEO Persona"),
-        "TOOLS.md": expect.stringContaining("# Tools"),
+        "TOOLS.md": expect.stringContaining("# TOOLS.md"),
+        "SKILLS.md": expect.stringContaining("- paperclip"),
       }),
       { entryFile: "AGENTS.md", replaceExisting: false },
     );
@@ -425,6 +432,16 @@ describe("agent skill routes", () => {
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(mockAgentService.create).toHaveBeenCalledWith(
+      "company-1",
+      expect.objectContaining({
+        adapterConfig: expect.objectContaining({
+          paperclipSkillSync: expect.objectContaining({
+            desiredSkills: ["paperclipai/paperclip/paperclip"],
+          }),
+        }),
+      }),
+    );
     expect(mockAgentInstructionsService.materializeManagedBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "11111111-1111-4111-8111-111111111111",
@@ -433,6 +450,10 @@ describe("agent skill routes", () => {
       }),
       expect.objectContaining({
         "AGENTS.md": expect.stringContaining("Keep the work moving until it's done."),
+        "HEARTBEAT.md": expect.stringContaining("Run this checklist"),
+        "SOUL.md": expect.stringContaining("execution-oriented"),
+        "TOOLS.md": expect.stringContaining("not an auto-generated tool inventory"),
+        "SKILLS.md": expect.stringContaining("- paperclip"),
       }),
       { entryFile: "AGENTS.md", replaceExisting: false },
     );

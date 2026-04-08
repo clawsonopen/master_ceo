@@ -1,18 +1,28 @@
+import fs from "node:fs/promises";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, companies } from "@paperclipai/db";
+import { agents, companies, projects, routines, routineTriggers } from "@paperclipai/db";
+import { agentInstructionsService } from "./agent-instructions.js";
+import { loadDefaultAgentInstructionsBundle } from "./default-agent-instructions.js";
+import { routineService } from "./routines.js";
 
 export const MASTER_COMPANY_NAME = "Master Holding Company";
 export const MASTER_CEO_NAME = "Master CEO";
 export const COST_RESEARCH_AGENT_NAME = "Cost & Provider Research Agent";
 export const MODEL_RESEARCH_ROUTER_AGENT_NAME = "Model Research Router Agent";
+export const AI_NEWS_AND_RELEASES_AGENT_NAME = "AI News and Releases Agent";
 
 type SeededMasterHierarchy = {
   companyId: string;
+  masterCeoId: string;
+  costResearchAgentId: string;
+  modelResearchRouterAgentId: string;
+  aiNewsAndReleasesAgentId: string;
   masterCompanyCreated: boolean;
   masterCeoCreated: boolean;
   costResearchAgentCreated: boolean;
   modelResearchRouterAgentCreated: boolean;
+  aiNewsAndReleasesAgentCreated: boolean;
 };
 
 type MasterHierarchyDb = Pick<Db, "select" | "insert" | "update">;
@@ -131,31 +141,206 @@ const MODEL_RESEARCH_ROUTER_CAPABILITIES = [
   "Plans and drives provider docs auto-discovery (Phase 3B crawl + parse workflow).",
 ].join("\n");
 
-const MODEL_RESEARCH_ROUTER_INSTRUCTIONS = `# SKILLS.md
+const AI_NEWS_AND_RELEASES_CAPABILITIES = [
+  "Scans AI ecosystem sources daily and tracks noteworthy updates for leadership.",
+  "Summarizes releases across models, agents, frameworks, and applied best practices.",
+  "Maintains structured release intelligence notes with source URLs and publication dates.",
+  "Highlights what changed, why it matters, and recommended follow-up actions for Master CEO.",
+].join("\n");
 
-## Current skills
-- router_assignment
-- model_research
-- provider_catalog_curation
-- cost_performance_tradeoff_analysis
-- provider_key_health_awareness
-- deterministic_decision_logging
+const MASTER_OPERATIONS_PROJECT_NAME = "Master Operations";
+const AI_NEWS_DAILY_ROUTINE_TITLE = "Daily AI News and Releases Scan";
+const AI_NEWS_DAILY_ROUTINE_CRON = "0 9 * * *";
+const AI_NEWS_DAILY_ROUTINE_TIMEZONE = "UTC";
 
-## In-progress / planned skills (Phase 3B)
-- provider_docs_autodiscovery
-- auth_scheme_detection
-- test_endpoint_discovery
-- api_reference_crawl
-- model_list_live_discovery
+const MODEL_RESEARCH_ROUTER_INSTRUCTION_FILE_NAMES = [
+  "AGENTS.md",
+  "HEARTBEAT.md",
+  "SOUL.md",
+  "TOOLS.md",
+  "SKILLS.md",
+] as const;
+const AI_NEWS_INSTRUCTION_FILE_NAMES = ["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md", "SKILLS.md"] as const;
 
-## Operating notes
-- Prefer deterministic safety rules for execution-time enforcement.
-- Use API key validity state and provider model catalog before recommending assignments.
-- Emit explicit decision notes with preference, task hint, and fallback path.
-`;
+function resolveInstructionFileUrl(folderName: string, fileName: string) {
+  return new URL(`../onboarding-assets/${folderName}/${fileName}`, import.meta.url);
+}
+
+async function loadInstructionBundle(
+  folderName: string,
+  fileNames: readonly string[],
+): Promise<Record<string, string>> {
+  const entries = await Promise.all(
+    fileNames.map(async (fileName) => {
+      const content = await fs.readFile(resolveInstructionFileUrl(folderName, fileName), "utf8");
+      return [fileName, content] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
+async function ensureMasterOperationsProject(
+  db: Db,
+  companyId: string,
+) {
+  const existing = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.companyId, companyId), eq(projects.name, MASTER_OPERATIONS_PROJECT_NAME)))
+    .then((rows) => rows[0] ?? null);
+
+  if (existing) return existing.id;
+
+  const [created] = await db
+    .insert(projects)
+    .values({
+      companyId,
+      name: MASTER_OPERATIONS_PROJECT_NAME,
+      description: "Operational routines and reporting tasks for master-level protected agents.",
+      status: "active",
+    })
+    .returning({ id: projects.id });
+  return created.id;
+}
+
+async function materializeManagedBundleForAgent(
+  db: Db,
+  input: { agentId: string; files: Record<string, string> },
+) {
+  const seededAgent = await db
+    .select({
+      id: agents.id,
+      companyId: agents.companyId,
+      name: agents.name,
+      role: agents.role,
+      adapterType: agents.adapterType,
+      adapterConfig: agents.adapterConfig,
+    })
+    .from(agents)
+    .where(eq(agents.id, input.agentId))
+    .then((rows) => rows[0] ?? null);
+  if (!seededAgent) return;
+
+  const instructions = agentInstructionsService();
+  const materialized = await instructions.materializeManagedBundle(
+    seededAgent,
+    input.files,
+    {
+      entryFile: "AGENTS.md",
+      replaceExisting: false,
+      clearLegacyPromptTemplate: true,
+    },
+  );
+
+  await db
+    .update(agents)
+    .set({
+      adapterConfig: materialized.adapterConfig,
+      updatedAt: new Date(),
+    })
+    .where(eq(agents.id, input.agentId));
+}
+
+async function ensureMasterSeedInstructionBundles(
+  db: Db,
+  input: {
+    masterCeoId: string;
+    costResearchAgentId: string;
+    modelResearchRouterAgentId: string;
+    aiNewsAndReleasesAgentId: string;
+  },
+) {
+  const [ceoFiles, masterWorkerFiles, routerFiles, aiNewsFiles] = await Promise.all([
+    loadDefaultAgentInstructionsBundle("ceo"),
+    loadDefaultAgentInstructionsBundle("master_worker"),
+    loadInstructionBundle("model-research-router", MODEL_RESEARCH_ROUTER_INSTRUCTION_FILE_NAMES),
+    loadInstructionBundle("ai-news-releases", AI_NEWS_INSTRUCTION_FILE_NAMES),
+  ]);
+
+  await materializeManagedBundleForAgent(db, {
+    agentId: input.masterCeoId,
+    files: ceoFiles,
+  });
+  await materializeManagedBundleForAgent(db, {
+    agentId: input.costResearchAgentId,
+    files: masterWorkerFiles,
+  });
+  await materializeManagedBundleForAgent(db, {
+    agentId: input.modelResearchRouterAgentId,
+    files: routerFiles,
+  });
+  await materializeManagedBundleForAgent(db, {
+    agentId: input.aiNewsAndReleasesAgentId,
+    files: aiNewsFiles,
+  });
+}
+
+async function ensureAiNewsAgentDefaults(
+  db: Db,
+  input: { companyId: string; agentId: string },
+) {
+  const [existingRoutine] = await db
+    .select({ id: routines.id })
+    .from(routines)
+    .where(and(
+      eq(routines.companyId, input.companyId),
+      eq(routines.assigneeAgentId, input.agentId),
+      eq(routines.title, AI_NEWS_DAILY_ROUTINE_TITLE),
+    ))
+    .limit(1);
+
+  const routinesSvc = routineService(db);
+  const projectId = await ensureMasterOperationsProject(db, input.companyId);
+  const routine = existingRoutine
+    ? await routinesSvc.get(existingRoutine.id)
+    : await routinesSvc.create(
+      input.companyId,
+      {
+        projectId,
+        title: AI_NEWS_DAILY_ROUTINE_TITLE,
+        description: [
+          "Run a daily scan across AI release channels (GitHub releases, YouTube updates, and x.com posts).",
+          "Capture notable model/agent/project updates with URLs, dates, and concise strategic summaries.",
+          "Prioritize items that change capabilities, performance, reliability, or operating costs.",
+        ].join("\n"),
+        assigneeAgentId: input.agentId,
+        priority: "medium",
+        status: "active",
+        concurrencyPolicy: "coalesce_if_active",
+        catchUpPolicy: "skip_missed",
+        variables: [],
+      },
+      { userId: "system" },
+    );
+
+  const hasScheduleTrigger = await db
+    .select({ id: routineTriggers.id })
+    .from(routineTriggers)
+    .where(and(
+      eq(routineTriggers.routineId, routine.id),
+      eq(routineTriggers.kind, "schedule"),
+      eq(routineTriggers.cronExpression, AI_NEWS_DAILY_ROUTINE_CRON),
+      eq(routineTriggers.timezone, AI_NEWS_DAILY_ROUTINE_TIMEZONE),
+    ))
+    .then((rows) => rows.length > 0);
+
+  if (!hasScheduleTrigger) {
+    await routinesSvc.createTrigger(
+      routine.id,
+      {
+        kind: "schedule",
+        label: "Daily master AI release scan",
+        enabled: true,
+        cronExpression: AI_NEWS_DAILY_ROUTINE_CRON,
+        timezone: AI_NEWS_DAILY_ROUTINE_TIMEZONE,
+      },
+      { userId: "system" },
+    );
+  }
+}
 
 export async function ensureMasterCompanyHierarchy(db: Db): Promise<SeededMasterHierarchy> {
-  return db.transaction(async (tx) => {
+  const seedResult = await db.transaction(async (tx) => {
     let masterCompany = await tx
       .select({ id: companies.id })
       .from(companies)
@@ -217,14 +402,30 @@ export async function ensureMasterCompanyHierarchy(db: Db): Promise<SeededMaster
       kbAccess: { read: ["global"], write: ["global"], search: ["global"] },
     });
 
+    const aiNewsAndReleasesAgent = await ensureProtectedAgent(tx, {
+      companyId: masterCompany.id,
+      name: AI_NEWS_AND_RELEASES_AGENT_NAME,
+      role: "researcher",
+      title: "AI News and Releases Intelligence Agent",
+      icon: "newspaper",
+      reportsTo: masterCeo.id,
+      permissions: { canCreateAgents: true },
+      skills: [
+        "ai_news_scanning",
+        "release_notes_analysis",
+        "model_capability_tracking",
+        "source_evidence_curation",
+      ],
+      kbAccess: { read: ["global"], write: ["global"], search: ["global"] },
+    });
+
     await tx
       .update(agents)
       .set({
         capabilities: MODEL_RESEARCH_ROUTER_CAPABILITIES,
         adapterConfig: {
-          instructionsBundleMode: "inline_seeded",
-          instructionsEntryFile: "SKILLS.md",
-          seededSkillsMarkdown: MODEL_RESEARCH_ROUTER_INSTRUCTIONS,
+          instructionsBundleMode: "managed",
+          instructionsEntryFile: "AGENTS.md",
           routerProvider: "openrouter",
           routerModel: "openrouter/auto",
           routerPreference: "balanced",
@@ -234,12 +435,46 @@ export async function ensureMasterCompanyHierarchy(db: Db): Promise<SeededMaster
       })
       .where(eq(agents.id, modelResearchRouterAgent.id));
 
+    await tx
+      .update(agents)
+      .set({
+        capabilities: AI_NEWS_AND_RELEASES_CAPABILITIES,
+        adapterConfig: {
+          instructionsBundleMode: "managed",
+          instructionsEntryFile: "AGENTS.md",
+          briefingCadence: "daily",
+          scanSources: ["github_releases", "youtube", "x_com"],
+          summaryFocus: "models_agents_projects_research_best_practices",
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, aiNewsAndReleasesAgent.id));
+
     return {
       companyId: masterCompany.id,
+      masterCeoId: masterCeo.id,
+      costResearchAgentId: costResearchAgent.id,
+      modelResearchRouterAgentId: modelResearchRouterAgent.id,
+      aiNewsAndReleasesAgentId: aiNewsAndReleasesAgent.id,
       masterCompanyCreated,
       masterCeoCreated: masterCeo.created,
       costResearchAgentCreated: costResearchAgent.created,
       modelResearchRouterAgentCreated: modelResearchRouterAgent.created,
+      aiNewsAndReleasesAgentCreated: aiNewsAndReleasesAgent.created,
     };
   });
+
+  await ensureMasterSeedInstructionBundles(db, {
+    masterCeoId: seedResult.masterCeoId,
+    costResearchAgentId: seedResult.costResearchAgentId,
+    modelResearchRouterAgentId: seedResult.modelResearchRouterAgentId,
+    aiNewsAndReleasesAgentId: seedResult.aiNewsAndReleasesAgentId,
+  });
+
+  await ensureAiNewsAgentDefaults(db, {
+    companyId: seedResult.companyId,
+    agentId: seedResult.aiNewsAndReleasesAgentId,
+  });
+
+  return seedResult;
 }

@@ -91,6 +91,7 @@ export function agentRoutes(db: Db) {
     "instructionsFilePath",
     "agentsMdPath",
   ] as const;
+  const DEFAULT_AGENT_DESIRED_SKILL_REFERENCES = ["paperclip"];
 
   const router = Router();
   const svc = agentService(db);
@@ -596,9 +597,13 @@ export function agentRoutes(db: Db) {
     const promptTemplate = typeof adapterConfig.promptTemplate === "string"
       ? adapterConfig.promptTemplate
       : "";
+    const companyType = await getCompanyType(agent.companyId);
+    const defaultFiles = await loadDefaultAgentInstructionsBundle(
+      resolveDefaultAgentInstructionsBundleRole(agent.role, { companyType }),
+    );
     const files = promptTemplate.trim().length === 0
-      ? await loadDefaultAgentInstructionsBundle(resolveDefaultAgentInstructionsBundleRole(agent.role))
-      : { "AGENTS.md": promptTemplate };
+      ? defaultFiles
+      : { ...defaultFiles, "AGENTS.md": promptTemplate };
     const materialized = await instructions.materializeManagedBundle(
       agent,
       files,
@@ -689,8 +694,20 @@ export function agentRoutes(db: Db) {
     adapterType: string,
     adapterConfig: Record<string, unknown>,
     requestedDesiredSkills: string[] | undefined,
+    options?: { applyDefaultPaperclipSkill?: boolean },
   ) {
-    if (!requestedDesiredSkills) {
+    let effectiveRequestedSkills = requestedDesiredSkills;
+
+    if ((!effectiveRequestedSkills || effectiveRequestedSkills.length === 0) && options?.applyDefaultPaperclipSkill) {
+      try {
+        await companySkills.resolveRequestedSkillKeys(companyId, DEFAULT_AGENT_DESIRED_SKILL_REFERENCES);
+        effectiveRequestedSkills = DEFAULT_AGENT_DESIRED_SKILL_REFERENCES;
+      } catch {
+        effectiveRequestedSkills = undefined;
+      }
+    }
+
+    if (!effectiveRequestedSkills || effectiveRequestedSkills.length === 0) {
       return {
         adapterConfig,
         desiredSkills: null as string[] | null,
@@ -700,7 +717,7 @@ export function agentRoutes(db: Db) {
 
     const resolvedRequestedSkills = await companySkills.resolveRequestedSkillKeys(
       companyId,
-      requestedDesiredSkills,
+      effectiveRequestedSkills,
     );
     const runtimeSkillEntries = await companySkills.listRuntimeSkillEntries(companyId, {
       materializeMissing: shouldMaterializeRuntimeSkillsForAdapter(adapterType),
@@ -1330,6 +1347,7 @@ export function agentRoutes(db: Db) {
       hireInput.adapterType,
       requestedAdapterConfig,
       Array.isArray(requestedDesiredSkills) ? requestedDesiredSkills : undefined,
+      { applyDefaultPaperclipSkill: true },
     );
     const normalizedAdapterConfig = await secretsSvc.normalizeAdapterConfigForPersistence(
       companyId,
@@ -1501,6 +1519,7 @@ export function agentRoutes(db: Db) {
       createInput.adapterType,
       requestedAdapterConfig,
       Array.isArray(requestedDesiredSkills) ? requestedDesiredSkills : undefined,
+      { applyDefaultPaperclipSkill: true },
     );
     const normalizedAdapterConfig = await secretsSvc.normalizeAdapterConfigForPersistence(
       companyId,

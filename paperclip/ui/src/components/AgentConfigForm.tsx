@@ -317,12 +317,16 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const adapterType = isCreate
     ? props.values.adapterType
     : overlay.adapterType ?? props.agent.adapterType;
+  const hasAdapterType = adapterType.trim().length > 0;
   const NONLOCAL_TYPES = new Set(["process", "http", "openclaw_gateway"]);
-  const isLocal = !NONLOCAL_TYPES.has(adapterType);
+  const isLocal = hasAdapterType && !NONLOCAL_TYPES.has(adapterType);
   
   const showLegacyWorkingDirectoryField =
     isLocal && shouldShowLegacyWorkingDirectoryField({ isCreate, adapterConfig: config });
-  const uiAdapter = useMemo(() => getUIAdapter(adapterType), [adapterType]);
+  const uiAdapter = useMemo(
+    () => (hasAdapterType ? getUIAdapter(adapterType) : null),
+    [adapterType, hasAdapterType],
+  );
 
   // Fetch adapter models for the effective adapter type
   const {
@@ -333,7 +337,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       ? queryKeys.agents.adapterModels(selectedCompanyId, adapterType)
       : ["agents", "none", "adapter-models", adapterType],
     queryFn: () => agentsApi.adapterModels(selectedCompanyId!, adapterType),
-    enabled: Boolean(selectedCompanyId),
+    enabled: Boolean(selectedCompanyId && hasAdapterType),
   });
   const models = fetchedModels ?? externalModels ?? [];
   const {
@@ -349,7 +353,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       }
       return agentsApi.detectModel(selectedCompanyId, adapterType);
     },
-    enabled: Boolean(selectedCompanyId && isLocal),
+    enabled: Boolean(selectedCompanyId && hasAdapterType && isLocal),
   });
   const detectedModel = detectedModelData?.model ?? null;
   const detectedModelCandidates = detectedModelData?.candidates ?? [];
@@ -414,6 +418,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     : null;
 
   function buildAdapterConfigForTest(): Record<string, unknown> {
+    if (!uiAdapter) {
+      throw new Error("Choose an adapter type before testing or saving configuration.");
+    }
     if (isCreate) {
       return uiAdapter.buildAdapterConfig(val!);
     }
@@ -644,7 +651,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               size="sm"
               className="h-7 px-2.5 text-xs"
               onClick={() => testEnvironment.mutate()}
-              disabled={testEnvironment.isPending || !selectedCompanyId}
+              disabled={testEnvironment.isPending || !selectedCompanyId || !hasAdapterType}
             >
               {testEnvironment.isPending ? "Testing..." : "Test environment"}
             </Button>
@@ -837,7 +844,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     variant="outline"
                     className="h-7 px-2 text-xs"
                     onClick={() => routerRecommendation.mutate()}
-                    disabled={routerRecommendation.isPending || routerCatalog.length === 0}
+                    disabled={!hasAdapterType || routerRecommendation.isPending || routerCatalog.length === 0}
                   >
                     <Sparkles className="h-3.5 w-3.5" />
                     {routerRecommendation.isPending ? "Thinking..." : "Ask Router Agent"}
@@ -1009,7 +1016,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               {adapterType === "claude_local" && (
                 <ClaudeLocalAdvancedFields {...adapterFieldProps} />
               )}
-              <uiAdapter.ConfigFields {...adapterFieldProps} />
+                {uiAdapter ? <uiAdapter.ConfigFields {...adapterFieldProps} /> : null}
 
               <Field label="Extra args (comma-separated)" hint={help.extraArgs}>
                 <DraftInput
@@ -1234,15 +1241,15 @@ function AdapterTypeDropdown({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
-          <span className="inline-flex items-center gap-1.5">
-            {value === "opencode_local" ? <OpenCodeLogoIcon className="h-3.5 w-3.5" /> : null}
-            <span>{adapterLabels[value] ?? getAdapterLabel(value)}</span>
-          </span>
-          <ChevronDown className="h-3 w-3 text-muted-foreground" />
-        </button>
-      </PopoverTrigger>
+        <PopoverTrigger asChild>
+          <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
+            <span className="inline-flex items-center gap-1.5">
+              {value === "opencode_local" ? <OpenCodeLogoIcon className="h-3.5 w-3.5" /> : null}
+              <span>{value ? (adapterLabels[value] ?? getAdapterLabel(value)) : "Select an adapter"}</span>
+            </span>
+            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+          </button>
+        </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
         {adapterList.map((item) => (
           <button

@@ -35,7 +35,7 @@ export function InviteLandingPage() {
   const token = (params.token ?? "").trim();
   const [joinType, setJoinType] = useState<JoinType>("human");
   const [agentName, setAgentName] = useState("");
-  const [adapterType, setAdapterType] = useState<AgentAdapterType>("claude_local");
+  const [adapterType, setAdapterType] = useState<AgentAdapterType | "">("");
   const [capabilities, setCapabilities] = useState("");
   const [result, setResult] = useState<{ kind: "bootstrap" | "join"; payload: unknown } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +85,9 @@ export function InviteLandingPage() {
       }
       if (joinType === "human") {
         return accessApi.acceptInvite(token, { requestType: "human" });
+      }
+      if (!adapterType) {
+        throw new Error("Choose an adapter type before submitting an agent join request.");
       }
       return accessApi.acceptInvite(token, {
         requestType: "agent",
@@ -264,8 +267,9 @@ export function InviteLandingPage() {
               <select
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                 value={adapterType}
-                onChange={(event) => setAdapterType(event.target.value as AgentAdapterType)}
+                onChange={(event) => setAdapterType(event.target.value as AgentAdapterType | "")}
               >
+                <option value="">Select an adapter</option>
                 {joinAdapterOptions.map((type) => (
                   <option key={type} value={type} disabled={!ENABLED_INVITE_ADAPTERS.has(type)}>
                     {getAdapterLabel(type)}{!ENABLED_INVITE_ADAPTERS.has(type) ? " (Coming soon)" : ""}
@@ -302,7 +306,9 @@ export function InviteLandingPage() {
           className="mt-5"
           disabled={
             acceptMutation.isPending ||
-            (joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && agentName.trim().length === 0) ||
+            (joinType === "agent" &&
+              invite.inviteType !== "bootstrap_ceo" &&
+              (agentName.trim().length === 0 || adapterType.trim().length === 0)) ||
             requiresAuthForHuman
           }
           onClick={() => acceptMutation.mutate()}

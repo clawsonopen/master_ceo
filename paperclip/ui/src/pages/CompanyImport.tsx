@@ -698,9 +698,9 @@ export function CompanyImport() {
     enabled: Boolean(selectedCompanyId),
   });
   const ceoAdapterType = useMemo(() => {
-    if (!companyAgents) return "claude_local";
+    if (!companyAgents) return "";
     const ceo = companyAgents.find((a) => a.role === "ceo");
-    return ceo?.adapterType ?? "claude_local";
+    return ceo?.adapterType ?? "";
   }, [companyAgents]);
 
   const localZipHelpText =
@@ -764,7 +764,7 @@ export function CompanyImport() {
       // Initialize adapter overrides — default all agents to the CEO's adapter type
       const defaultAdapters: Record<string, string> = {};
       for (const agent of result.manifest.agents) {
-        defaultAdapters[agent.slug] = ceoAdapterType;
+        defaultAdapters[agent.slug] = ceoAdapterType || agent.adapterType || "";
       }
       setAdapterOverrides(defaultAdapters);
       setAdapterExpandedSlugs(new Set());
@@ -1043,7 +1043,7 @@ export function CompanyImport() {
   function handleAdapterConfigChange(slug: string, patch: Partial<CreateConfigValues>) {
     setAdapterConfigValues((prev) => ({
       ...prev,
-      [slug]: { ...(prev[slug] ?? { ...defaultCreateValues, adapterType: adapterOverrides[slug] ?? "claude_local" }), ...patch },
+      [slug]: { ...(prev[slug] ?? { ...defaultCreateValues, adapterType: adapterOverrides[slug] ?? "" }), ...patch },
     }));
   }
 

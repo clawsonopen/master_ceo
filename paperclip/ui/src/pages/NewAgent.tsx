@@ -82,7 +82,7 @@ export function NewAgent() {
       ? queryKeys.agents.adapterModels(selectedCompanyId, configValues.adapterType)
       : ["agents", "none", "adapter-models", configValues.adapterType],
     queryFn: () => agentsApi.adapterModels(selectedCompanyId!, configValues.adapterType),
-    enabled: Boolean(selectedCompanyId),
+    enabled: Boolean(selectedCompanyId && configValues.adapterType.trim()),
   });
 
   const { data: companySkills } = useQuery({
@@ -132,6 +132,9 @@ export function NewAgent() {
   });
 
   function buildAdapterConfig() {
+    if (!configValues.adapterType.trim()) {
+      throw new Error("Choose an adapter type before creating the agent.");
+    }
     const adapter = getUIAdapter(configValues.adapterType);
     const built = adapter.buildAdapterConfig(configValues);
     const routerProvider = configValues.routerProvider?.trim() ?? "";
@@ -146,6 +149,10 @@ export function NewAgent() {
   function handleSubmit() {
     if (!selectedCompanyId || !name.trim()) return;
     setFormError(null);
+    if (!configValues.adapterType.trim()) {
+      setFormError("Choose an adapter type before creating the agent.");
+      return;
+    }
     if (configValues.adapterType === "opencode_local") {
       const selectedModel = configValues.model.trim();
       if (!selectedModel) {
