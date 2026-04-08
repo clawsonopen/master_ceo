@@ -64,7 +64,10 @@
 
 ---
 
-## Yeni Chatte Yapilacaklar (Kalan Isler / Senin Taleplerin)
+## Historical (Closed) - Yeni Chatte Yapilacaklar (Kalan Isler / Senin Taleplerin)
+
+> Bu bolum handoff'un ilk anindaki kalanlari gosterir.
+> Asagidaki tum maddeler daha sonra kapatilmistir (bkz. "Update (2026-04-08, bu chat sonu)").
 
 ### 1) Skills silmede browser confirm yerine app-ici Dialog
 - Company Skills’te su an delete akisi `window.confirm` ile.
