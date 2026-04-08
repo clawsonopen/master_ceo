@@ -10,7 +10,17 @@ export function dashboardRoutes(db: Db) {
   router.get("/companies/:companyId/dashboard", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const summary = await svc.summary(companyId);
+    const kbPolicyWindowRaw = typeof req.query.kbPolicyWindow === "string" ? req.query.kbPolicyWindow : undefined;
+    const kbPolicyAction = typeof req.query.kbPolicyAction === "string" ? req.query.kbPolicyAction.trim() : undefined;
+    const kbPolicyScope = typeof req.query.kbPolicyScope === "string" ? req.query.kbPolicyScope.trim().toLowerCase() : undefined;
+    const kbPolicyWindow = kbPolicyWindowRaw === "7d" || kbPolicyWindowRaw === "30d" || kbPolicyWindowRaw === "24h"
+      ? kbPolicyWindowRaw
+      : "24h";
+    const summary = await svc.summary(companyId, {
+      kbPolicyWindow,
+      kbPolicyAction: kbPolicyAction || undefined,
+      kbPolicyScope: kbPolicyScope || undefined,
+    });
     res.json(summary);
   });
 

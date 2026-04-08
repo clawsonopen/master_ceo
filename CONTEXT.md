@@ -95,4 +95,51 @@ and gets a fully autonomous AI holding company that:
 - Org and approval behavior is clarified and fixed:
   - pending assignment block is policy-driven (`requireBoardApprovalForNewAgents`)
   - org chart preserves local roots under cross-company master reporting
-  - pending assignment errors now include direct approval guidance.
+- pending assignment errors now include direct approval guidance.
+
+---
+
+## 2026-04-09 KB Policy Analytics Ops
+
+- KB policy analytics now runs with **hybrid retention**:
+  - raw snapshots: `kb.policy_metrics.snapshot`
+  - daily rollups: `kb.policy_metrics.rollup.daily`
+  - monthly rollups: `kb.policy_metrics.rollup.monthly`
+  - archive export events: `kb.policy_metrics.archive.export`
+
+- Runtime behavior:
+  - policy decisions are sampled dynamically (`env` + traffic-aware auto sampling)
+  - critical events are always recorded:
+    - all `deny` decisions
+    - important scopes (`global`, `intelligence` by default)
+    - first-seen key events (TTL-protected)
+
+- Maintenance behavior:
+  - old raw snapshots are rolled up + exported + deleted in batches
+  - old rollups are pruned by retention
+  - archive files are pruned by age and capped by total archive size
+
+- Key environment knobs:
+  - `PAPERCLIP_KB_POLICY_ALLOW_SAMPLE_RATE` (default `0.1`)
+  - `PAPERCLIP_KB_POLICY_TRAFFIC_WINDOW_SECONDS` (default `60`)
+  - `PAPERCLIP_KB_POLICY_MEDIUM_RPS_THRESHOLD` (default `5`)
+  - `PAPERCLIP_KB_POLICY_HIGH_RPS_THRESHOLD` (default `20`)
+  - `PAPERCLIP_KB_POLICY_AUTO_MEDIUM_SAMPLE_RATE` (default `0.25`)
+  - `PAPERCLIP_KB_POLICY_AUTO_HIGH_SAMPLE_RATE` (default `0.1`)
+  - `PAPERCLIP_KB_POLICY_IMPORTANT_SCOPES` (default `global,intelligence`)
+  - `PAPERCLIP_KB_POLICY_FIRST_EVENT_TTL_SECONDS` (default `3600`)
+  - `PAPERCLIP_KB_POLICY_SNAPSHOT_INTERVAL_MS` (default `60000`)
+  - `PAPERCLIP_KB_POLICY_MAINTENANCE_INTERVAL_MS` (default `360000`)
+  - `PAPERCLIP_KB_POLICY_SNAPSHOT_RETENTION_DAYS` (default `90`)
+  - `PAPERCLIP_KB_POLICY_DAILY_ROLLUP_RETENTION_DAYS` (default `730`)
+  - `PAPERCLIP_KB_POLICY_MONTHLY_ROLLUP_RETENTION_DAYS` (default `3650`)
+  - `PAPERCLIP_KB_POLICY_RETENTION_BATCH_SIZE` (default `1000`)
+  - `PAPERCLIP_KB_POLICY_ARCHIVE_EXPORT_ENABLED` (default `true`)
+  - `PAPERCLIP_KB_POLICY_ARCHIVE_DIR` (default `${PAPERCLIP_INSTANCE_ROOT}/data/analytics/kb-policy-archive`)
+  - `PAPERCLIP_KB_POLICY_ARCHIVE_RETENTION_DAYS` (default `3650`)
+  - `PAPERCLIP_KB_POLICY_ARCHIVE_MAX_BYTES` (default `2147483648`)
+
+- Dashboard support:
+  - KB deny trend window selection: `24h | 7d | 30d`
+  - deny trend supports action/scope query filters
+  - deny-by-action and deny-by-scope cards are clickable and drive trend filtering

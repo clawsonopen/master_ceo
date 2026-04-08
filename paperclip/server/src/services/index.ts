@@ -24,6 +24,19 @@ export { boardAuthService } from "./board-auth.js";
 export { instanceSettingsService } from "./instance-settings.js";
 export { apiKeyService, API_KEY_PROVIDERS, type ApiKeyProvider } from "./api-keys.js";
 export { providerDiscoveryService } from "./provider-discovery.js";
+export {
+  KBFileManager,
+  KBEmbeddingService,
+  KBIndexer,
+  KBSearcher,
+  ensureKnowledgeBaseRuntime,
+  shutdownKnowledgeBaseRuntime,
+  normalizeKbAccess,
+  canReadScope,
+  canWriteScope,
+  canSearchScope,
+  resolveSearchScopes,
+} from "./knowledge-base/index.js";
 export { companyPortabilityService } from "./company-portability.js";
 export { executionWorkspaceService } from "./execution-workspaces.js";
 export { workspaceOperationService } from "./workspace-operations.js";
