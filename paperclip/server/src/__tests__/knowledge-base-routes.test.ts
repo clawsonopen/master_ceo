@@ -164,6 +164,127 @@ describe("knowledge base routes", () => {
     expect(search.body.results.some((result: { filePath: string }) => result.filePath === "Global_Holding/wiki/search-target.md")).toBe(true);
   });
 
+  it("denies agent read when document scope is outside kb_access", async () => {
+    mockAgentService.getById.mockResolvedValue({
+      id: "agent-read-deny",
+      name: "Read Restricted Agent",
+      kbAccess: { read: ["global"], write: ["global"], search: ["global"] },
+    });
+    const boardApp = buildApp({
+      type: "board",
+      source: "local_implicit",
+      isInstanceAdmin: true,
+      userId: "board-user",
+      companyIds: ["company-1"],
+    });
+    await request(boardApp).post("/api/knowledge-base/write").send({
+      path: "Intelligence/wiki/secret.md",
+      content: "# Secret\n\nIntelligence-only content.",
+    });
+
+    const agentApp = buildApp({
+      type: "agent",
+      agentId: "agent-read-deny",
+      companyId: "company-1",
+      companyIds: ["company-1"],
+    });
+    const read = await request(agentApp).get("/api/knowledge-base/read").query({ path: "Intelligence/wiki/secret.md" });
+    expect(read.status).toBe(200);
+    expect(read.body.ok).toBe(false);
+    expect(String(read.body.error)).toContain("denied");
+  });
+
+  it("allows agent read via search scope token and filters list output by allowed scopes", async () => {
+    mockAgentService.getById.mockResolvedValue({
+      id: "agent-read-list",
+      name: "Scoped Reader",
+      kbAccess: { read: [], write: [], search: ["companies/acme"] },
+    });
+    const boardApp = buildApp({
+      type: "board",
+      source: "local_implicit",
+      isInstanceAdmin: true,
+      userId: "board-user",
+      companyIds: ["company-1"],
+    });
+    await request(boardApp).post("/api/knowledge-base/write").send({
+      path: "Companies/acme/wiki/roadmap.md",
+      content: "# ACME\n\nVisible to scoped reader.",
+    });
+    await request(boardApp).post("/api/knowledge-base/write").send({
+      path: "Global_Holding/wiki/board.md",
+      content: "# Board\n\nNot visible to scoped reader.",
+    });
+
+    const agentApp = buildApp({
+      type: "agent",
+      agentId: "agent-read-list",
+      companyId: "company-1",
+      companyIds: ["company-1"],
+    });
+    const readAllowed = await request(agentApp).get("/api/knowledge-base/read").query({ path: "Companies/acme/wiki/roadmap.md" });
+    expect(readAllowed.status).toBe(200);
+    expect(readAllowed.body.ok).toBe(true);
+    expect(String(readAllowed.body.content)).toContain("Visible to scoped reader");
+
+    const list = await request(agentApp).get("/api/knowledge-base/list").query({ directory: "" });
+    expect(list.status).toBe(200);
+    expect(list.body.ok).toBe(true);
+    expect(Array.isArray(list.body.documents)).toBe(true);
+    expect(list.body.documents.some((doc: { relativePath: string }) => doc.relativePath === "Companies/acme/wiki/roadmap.md")).toBe(true);
+    expect(list.body.documents.some((doc: { relativePath: string }) => doc.relativePath === "Global_Holding/wiki/board.md")).toBe(false);
+  });
+
+  it("denies agent wiki-entry outside write scope", async () => {
+    mockAgentService.getById.mockResolvedValue({
+      id: "agent-wiki-deny",
+      name: "Wiki Restricted Agent",
+      kbAccess: { read: ["global"], write: ["global"], search: ["global"] },
+    });
+    const app = buildApp({
+      type: "agent",
+      agentId: "agent-wiki-deny",
+      companyId: "company-1",
+      companyIds: ["company-1"],
+    });
+
+    const create = await request(app).post("/api/knowledge-base/wiki-entry").send({
+      scope: "intelligence",
+      title: "Hidden Brief",
+      content: "Should be denied.",
+    });
+    expect(create.status).toBe(200);
+    expect(create.body.ok).toBe(false);
+    expect(String(create.body.error)).toContain("denied");
+  });
+
+  it("allows agent wiki-entry within write scope", async () => {
+    mockAgentService.getById.mockResolvedValue({
+      id: "agent-wiki-allow",
+      name: "Wiki Writer Agent",
+      kbAccess: { read: ["global"], write: ["global"], search: ["global"] },
+    });
+    const app = buildApp({
+      type: "agent",
+      agentId: "agent-wiki-allow",
+      companyId: "company-1",
+      companyIds: ["company-1"],
+    });
+
+    const create = await request(app).post("/api/knowledge-base/wiki-entry").send({
+      scope: "global",
+      title: "Agent Runbook",
+      content: "Scope-valid wiki entry.",
+    });
+    expect(create.status).toBe(200);
+    expect(create.body.ok).toBe(true);
+
+    const read = await request(app).get("/api/knowledge-base/read").query({ path: create.body.path });
+    expect(read.status).toBe(200);
+    expect(read.body.ok).toBe(true);
+    expect(String(read.body.content)).toContain("Scope-valid wiki entry.");
+  });
+
   it("reports knowledge-base health and benchmark payload", async () => {
     const app = buildApp({
       type: "board",

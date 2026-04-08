@@ -116,6 +116,11 @@ export const queryKeys = {
   activity: (companyId: string) => ["activity", companyId] as const,
   costs: (companyId: string, from?: string, to?: string) =>
     ["costs", companyId, from, to] as const,
+  knowledgeBase: {
+    list: (directory: string, scopeFilter: string) =>
+      ["knowledge-base", "list", directory, scopeFilter] as const,
+    read: (path: string | null) => ["knowledge-base", "read", path ?? "__none__"] as const,
+  },
   usageByProvider: (companyId: string, from?: string, to?: string) =>
     ["usage-by-provider", companyId, from, to] as const,
   usageByBiller: (companyId: string, from?: string, to?: string) =>
