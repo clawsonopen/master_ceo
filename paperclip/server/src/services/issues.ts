@@ -583,7 +583,9 @@ export function issueService(db: Db) {
       throw unprocessable("Assignee must belong to same company");
     }
     if (assignee.status === "pending_approval") {
-      throw conflict("Cannot assign work to pending approval agents");
+      throw conflict(
+        "Cannot assign work to pending approval agents. Approve the pending hire first.",
+      );
     }
     if (assignee.status === "terminated") {
       throw conflict("Cannot assign work to terminated agents");

@@ -123,6 +123,7 @@ const statusDotColor: Record<string, string> = {
   active: "#4ade80",
   paused: "#facc15",
   idle: "#facc15",
+  pending_approval: "#f59e0b",
   error: "#f87171",
   terminated: "#a3a3a3",
 };

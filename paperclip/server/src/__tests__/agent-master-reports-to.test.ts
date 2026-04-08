@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { agents, companies, createDb } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
@@ -18,8 +18,7 @@ describe("agent master reporting defaults", () => {
   }, 20_000);
 
   afterEach(async () => {
-    await db.delete(agents);
-    await db.delete(companies);
+    await db.execute(sql.raw("TRUNCATE TABLE companies RESTART IDENTITY CASCADE"));
   });
 
   afterAll(async () => {
@@ -123,5 +122,53 @@ describe("agent master reporting defaults", () => {
     } as any);
 
     expect(agent.reportsTo).toBe(masterManagerId);
+  });
+
+  it("keeps first regular-company CEO visible as org root even when reportsTo points to master", async () => {
+    await ensureMasterCompanyHierarchy(db);
+    const company = await createRegularCompany("Org Visibility Company", "REGE");
+    const svc = agentService(db);
+
+    const ceo = await svc.create(company.id, {
+      name: "Visible CEO",
+      role: "ceo",
+      adapterType: "process",
+    } as any);
+
+    const org = await svc.orgForCompany(company.id);
+    expect(org).toHaveLength(1);
+    expect(org[0]?.id).toBe(ceo.id);
+  });
+
+  it("preserves CEO -> manager -> contributor layers for regular company org chart", async () => {
+    await ensureMasterCompanyHierarchy(db);
+    const company = await createRegularCompany("Org Layer Company", "REGF");
+    const svc = agentService(db);
+
+    const ceo = await svc.create(company.id, {
+      name: "Layer CEO",
+      role: "ceo",
+      adapterType: "process",
+    } as any);
+    const manager = await svc.create(company.id, {
+      name: "Layer Manager",
+      role: "general",
+      adapterType: "process",
+      reportsTo: ceo.id,
+    } as any);
+    const contributor = await svc.create(company.id, {
+      name: "Layer Contributor",
+      role: "general",
+      adapterType: "process",
+      reportsTo: manager.id,
+    } as any);
+
+    const org = await svc.orgForCompany(company.id);
+    expect(org).toHaveLength(1);
+    expect(org[0]?.id).toBe(ceo.id);
+    expect((org[0]?.reports as Array<{ id: string }>)?.[0]?.id).toBe(manager.id);
+    expect(
+      ((org[0]?.reports as Array<{ reports?: Array<{ id: string }> }>)[0]?.reports ?? [])[0]?.id,
+    ).toBe(contributor.id);
   });
 });

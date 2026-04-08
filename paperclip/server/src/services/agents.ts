@@ -679,9 +679,15 @@ export function agentService(db: Db) {
         .from(agents)
         .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
       const normalizedRows = rows.map(normalizeAgentRow);
+      const localAgentIds = new Set(normalizedRows.map((row) => row.id));
       const byManager = new Map<string | null, typeof normalizedRows>();
       for (const row of normalizedRows) {
-        const key = row.reportsTo ?? null;
+        // Agents can report to managers in other companies (e.g. master CEO).
+        // For this company's org chart, those nodes must still appear as local roots.
+        const key =
+          row.reportsTo && localAgentIds.has(row.reportsTo)
+            ? row.reportsTo
+            : null;
         const group = byManager.get(key) ?? [];
         group.push(row);
         byManager.set(key, group);

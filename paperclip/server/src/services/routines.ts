@@ -327,7 +327,11 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       .then((rows) => rows[0] ?? null);
     if (!agent) throw notFound("Assignee agent not found");
     if (agent.companyId !== companyId) throw unprocessable("Assignee must belong to same company");
-    if (agent.status === "pending_approval") throw conflict("Cannot assign routines to pending approval agents");
+    if (agent.status === "pending_approval") {
+      throw conflict(
+        "Cannot assign routines to pending approval agents. Approve the pending hire first.",
+      );
+    }
     if (agent.status === "terminated") throw conflict("Cannot assign routines to terminated agents");
   }
 

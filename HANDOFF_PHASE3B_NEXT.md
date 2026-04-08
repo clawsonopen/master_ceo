@@ -139,3 +139,23 @@
    - crawl worker + parser + confidence engine
    - AI News and Releases Agent seed
    - master workers default instructions files + TOOLS aciklamasi
+
+---
+
+## Update (2026-04-08, bu chat sonu)
+
+- Kalan islerden **3. madde de tamamlandi** (org chart + pending approval davranisi).
+- Root-cause netlestirildi:
+  - `pending_approval` atamasi API key eksikliginden degil, `requireBoardApprovalForNewAgents` policy'sinden gelir.
+  - Pending durumdaki ajanlara issue/routine assignment bilerek engellenir.
+- Uygulanan iyilestirmeler:
+  - Org tree, cross-company manager (master CEO) baglantisinda local CEO'yu root olarak gosterecek sekilde duzeltildi.
+  - Pending-assignment hata mesajlari aksiyon alinabilir hale getirildi.
+  - Org chart'ta `pending_approval` durum rengi belirginlestirildi.
+- Regresyon testi eklendi ve gecti:
+  - `server/src/__tests__/agent-master-reports-to.test.ts`
+- Typecheck gecti:
+  - `@paperclipai/server`
+  - `@paperclipai/ui`
+
+Bu handoff listesindeki 1-7 maddeleri itibariyla acik kalan is yok.
