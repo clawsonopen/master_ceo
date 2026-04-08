@@ -71,10 +71,19 @@ import {
   ArrowLeft,
   HelpCircle,
   FolderOpen,
+  AlertTriangle,
 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AgentIcon, AgentIconPicker } from "../components/AgentIconPicker";
 import { RunTranscriptView, type TranscriptMode } from "../components/transcript/RunTranscriptView";
 import {
@@ -1681,6 +1690,24 @@ function ConfigurationTab({
               disabled={updatePermissions.isPending || taskAssignLocked}
             />
           </div>
+          <div className="flex items-center justify-between gap-4 text-sm">
+            <div className="space-y-1">
+              <div>Can create company</div>
+              <p className="text-xs text-muted-foreground">
+                Enabled only for CEO agents in the master company. Applies to regular company creation.
+              </p>
+            </div>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
+                isMasterCompanyCeo
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  : "border-border bg-muted/50 text-muted-foreground",
+              )}
+            >
+              {isMasterCompanyCeo ? "Yes" : "No"}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1729,7 +1756,7 @@ function PromptsTab({
   onSavingChange: (saving: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, companies } = useCompany();
   const { isMobile } = useSidebar();
   const [selectedFile, setSelectedFile] = useState<string>("AGENTS.md");
   const [showFilePanel, setShowFilePanel] = useState(false);
@@ -1765,20 +1792,23 @@ function PromptsTab({
     setAwaitingRefresh(false);
     lastFileVersionRef.current = null;
     externalBundleRef.current = null;
+    setMasterEditWarningOpen(false);
+    setMasterEditingUnlocked(false);
   }, [agent.id]);
 
-  const isLocal =
-    agent.adapterType === "claude_local" ||
-    agent.adapterType === "codex_local" ||
-    agent.adapterType === "opencode_local" ||
-    agent.adapterType === "pi_local" ||
-    agent.adapterType === "hermes_local" ||
-    agent.adapterType === "cursor";
+  const [masterEditWarningOpen, setMasterEditWarningOpen] = useState(false);
+  const [masterEditingUnlocked, setMasterEditingUnlocked] = useState(false);
+  const agentCompanyType = useMemo(
+    () => companies.find((company) => company.id === agent.companyId)?.companyType ?? null,
+    [agent.companyId, companies],
+  );
+  const requiresMasterEditUnlock = agent.isProtected && agentCompanyType === "master";
+  const isEditingLocked = requiresMasterEditUnlock && !masterEditingUnlocked;
 
   const { data: bundle, isLoading: bundleLoading } = useQuery({
     queryKey: queryKeys.agents.instructionsBundle(agent.id),
     queryFn: () => agentsApi.instructionsBundle(agent.id, companyId),
-    enabled: Boolean(companyId && isLocal),
+    enabled: Boolean(companyId),
   });
 
   const persistedMode = bundle?.mode ?? "managed";
@@ -1815,7 +1845,7 @@ function PromptsTab({
   const { data: selectedFileDetail, isLoading: fileLoading } = useQuery({
     queryKey: queryKeys.agents.instructionsFile(agent.id, selectedOrEntryFile),
     queryFn: () => agentsApi.instructionsFile(agent.id, selectedOrEntryFile, companyId),
-    enabled: Boolean(companyId && isLocal && selectedFileExists),
+    enabled: Boolean(companyId && selectedFileExists),
   });
 
   const updateBundle = useMutation({
@@ -2020,22 +2050,49 @@ function PromptsTab({
     document.body.style.userSelect = "none";
   }, [filePanelWidth]);
 
-  if (!isLocal) {
-    return (
-      <div className="max-w-3xl">
-        <p className="text-sm text-muted-foreground">
-          Instructions bundles are only available for local adapters.
-        </p>
-      </div>
-    );
-  }
-
   if (bundleLoading && !bundle) {
     return <PromptsTabSkeleton />;
   }
 
   return (
     <div className="space-y-6">
+      <Dialog open={masterEditWarningOpen} onOpenChange={setMasterEditWarningOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Confirm Master Agent Instruction Edit
+            </DialogTitle>
+            <DialogDescription>
+              This is a protected Master Company agent. Instruction changes may affect router and company-wide behavior.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setMasterEditWarningOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setMasterEditingUnlocked(true);
+                setMasterEditWarningOpen(false);
+              }}
+            >
+              I Understand, Enable Editing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {isEditingLocked ? (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 flex items-center justify-between gap-3">
+          <span>This protected master agent is locked for editing until confirmed.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => setMasterEditWarningOpen(true)}>
+            Unlock editing
+          </Button>
+        </div>
+      ) : null}
+
+      <div className={cn(isEditingLocked && "pointer-events-none opacity-60 select-none")}>
       {(bundle?.warnings ?? []).length > 0 && (
         <div className="space-y-2">
           {(bundle?.warnings ?? []).map((warning) => (
@@ -2404,6 +2461,7 @@ function PromptsTab({
             />
           )}
         </div>
+      </div>
       </div>
 
     </div>

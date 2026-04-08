@@ -52,21 +52,37 @@ vi.mock("../services/index.js", () => ({
   logActivity: mockLogActivity,
 }));
 
-function createDbStub(masterCompanyId = "11111111-1111-4111-8111-111111111111") {
+function createDbStub(masterCompanyId: string | null = "11111111-1111-4111-8111-111111111111") {
+  const rows = masterCompanyId ? [{ id: masterCompanyId, companyType: "master" }] : [];
   return {
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([{ id: masterCompanyId, companyType: "master" }]),
+        where: vi.fn().mockResolvedValue(rows),
       }),
     }),
   };
 }
 
-function createApp() {
+type TestActor =
+  | {
+    type: "board";
+    userId: string;
+    companyIds: string[];
+    source: "local_implicit" | "session" | "board_key";
+    isInstanceAdmin: boolean;
+  }
+  | {
+    type: "agent";
+    agentId: string;
+    companyId: string;
+    runId?: string | null;
+  };
+
+function createApp(options?: { actor?: TestActor; masterCompanyId?: string | null }) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).actor = {
+    (req as any).actor = options?.actor ?? {
       type: "board",
       userId: "board-user",
       companyIds: ["11111111-1111-4111-8111-111111111111"],
@@ -75,7 +91,7 @@ function createApp() {
     };
     next();
   });
-  app.use("/api/companies", companyRoutes(createDbStub() as any));
+  app.use("/api/companies", companyRoutes(createDbStub(options?.masterCompanyId) as any));
   app.use(errorHandler);
   return app;
 }
@@ -174,5 +190,109 @@ describe("company hierarchy routes", () => {
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("Master company");
     expect(mockCompanyService.archive).not.toHaveBeenCalled();
+  });
+
+  it("allows master CEO agents to create regular companies", async () => {
+    mockAgentService.getById.mockResolvedValue({
+      id: "agent-master-ceo",
+      companyId: "11111111-1111-4111-8111-111111111111",
+      role: "ceo",
+    });
+    mockCompanyService.getById.mockResolvedValue({
+      id: "11111111-1111-4111-8111-111111111111",
+      companyType: "master",
+    });
+    mockCompanyService.create.mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      name: "Agent Child Co",
+      companyType: "regular",
+      parentCompanyId: "11111111-1111-4111-8111-111111111111",
+      isDeletable: true,
+      budgetMonthlyCents: 0,
+    });
+
+    const res = await request(createApp({
+      actor: {
+        type: "agent",
+        agentId: "agent-master-ceo",
+        companyId: "11111111-1111-4111-8111-111111111111",
+      },
+    }))
+      .post("/api/companies")
+      .send({
+        name: "Agent Child Co",
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockCompanyService.create).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Agent Child Co",
+      companyType: "regular",
+      parentCompanyId: "11111111-1111-4111-8111-111111111111",
+      isDeletable: true,
+    }));
+    expect(mockAccessService.ensureMembership).toHaveBeenCalledWith(
+      "22222222-2222-4222-8222-222222222222",
+      "agent",
+      "agent-master-ceo",
+      "owner",
+      "active",
+    );
+  });
+
+  it("rejects master company creation by master CEO agents", async () => {
+    mockAgentService.getById.mockResolvedValue({
+      id: "agent-master-ceo",
+      companyId: "11111111-1111-4111-8111-111111111111",
+      role: "ceo",
+    });
+    mockCompanyService.getById.mockResolvedValue({
+      id: "11111111-1111-4111-8111-111111111111",
+      companyType: "master",
+    });
+
+    const res = await request(createApp({
+      actor: {
+        type: "agent",
+        agentId: "agent-master-ceo",
+        companyId: "11111111-1111-4111-8111-111111111111",
+      },
+    }))
+      .post("/api/companies")
+      .send({
+        name: "Not Allowed Master",
+        companyType: "master",
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("only create regular companies");
+    expect(mockCompanyService.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects regular-company CEOs from creating companies", async () => {
+    mockAgentService.getById.mockResolvedValue({
+      id: "agent-regular-ceo",
+      companyId: "22222222-2222-4222-8222-222222222222",
+      role: "ceo",
+    });
+    mockCompanyService.getById.mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      companyType: "regular",
+    });
+
+    const res = await request(createApp({
+      actor: {
+        type: "agent",
+        agentId: "agent-regular-ceo",
+        companyId: "22222222-2222-4222-8222-222222222222",
+      },
+    }))
+      .post("/api/companies")
+      .send({
+        name: "Not Allowed Child",
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("master company CEO agents");
+    expect(mockCompanyService.create).not.toHaveBeenCalled();
   });
 });

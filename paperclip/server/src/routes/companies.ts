@@ -93,6 +93,30 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     }
   }
 
+  async function assertCanCreateCompany(req: Request, requestedType: "regular" | "master") {
+    if (req.actor.type === "board") {
+      if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return null;
+      throw forbidden("Instance admin required");
+    }
+
+    if (req.actor.type !== "agent" || !req.actor.agentId) {
+      throw forbidden("Board or agent authentication required");
+    }
+
+    const actorAgent = await agents.getById(req.actor.agentId);
+    if (!actorAgent) {
+      throw forbidden("Agent authentication required");
+    }
+    const actorCompany = await svc.getById(actorAgent.companyId);
+    if (!actorCompany || actorCompany.companyType !== "master" || actorAgent.role !== "ceo") {
+      throw forbidden("Only master company CEO agents can create companies");
+    }
+    if (requestedType !== "regular") {
+      throw forbidden("Master company CEO agents can only create regular companies");
+    }
+    return actorAgent;
+  }
+
   router.get("/", async (req, res) => {
     assertBoard(req);
     const result = await svc.list();
@@ -275,11 +299,8 @@ export function companyRoutes(db: Db, storage?: StorageService) {
   });
 
   router.post("/", validate(createCompanySchema), async (req, res) => {
-    assertBoard(req);
-    if (!(req.actor.source === "local_implicit" || req.actor.isInstanceAdmin)) {
-      throw forbidden("Instance admin required");
-    }
     const requestedType = req.body.companyType ?? "regular";
+    const creatorAgent = await assertCanCreateCompany(req, requestedType);
     let parentCompanyId = req.body.parentCompanyId ?? null;
 
     if (requestedType === "master") {
@@ -298,11 +319,15 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       isDeletable: requestedType !== "master",
       parentCompanyId,
     });
-    await access.ensureMembership(company.id, "user", req.actor.userId ?? "local-board", "owner", "active");
+    if (req.actor.type === "agent" && creatorAgent) {
+      await access.ensureMembership(company.id, "agent", creatorAgent.id, "owner", "active");
+    } else {
+      await access.ensureMembership(company.id, "user", req.actor.userId ?? "local-board", "owner", "active");
+    }
     await logActivity(db, {
       companyId: company.id,
-      actorType: "user",
-      actorId: req.actor.userId ?? "board",
+      actorType: req.actor.type === "agent" ? "agent" : "user",
+      actorId: req.actor.type === "agent" ? creatorAgent?.id ?? req.actor.agentId ?? "agent" : req.actor.userId ?? "board",
       action: "company.created",
       entityType: "company",
       entityId: company.id,

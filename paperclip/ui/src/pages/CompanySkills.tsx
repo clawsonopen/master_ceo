@@ -52,6 +52,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Trash2,
 } from "lucide-react";
 
 type SkillTreeNode = {
@@ -505,6 +506,8 @@ function SkillPane({
   installUpdatePending,
   onSave,
   savePending,
+  onDeleteSkill,
+  deletePending,
 }: {
   loading: boolean;
   detail: CompanySkillDetail | null | undefined;
@@ -524,6 +527,8 @@ function SkillPane({
   installUpdatePending: boolean;
   onSave: () => void;
   savePending: boolean;
+  onDeleteSkill: () => void;
+  deletePending: boolean;
 }) {
   const { pushToast } = useToast();
 
@@ -560,13 +565,26 @@ function SkillPane({
             )}
           </div>
           {detail.editable ? (
-            <button
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-              onClick={() => setEditMode(!editMode)}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              {editMode ? "Stop editing" : "Edit"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                onClick={() => setEditMode(!editMode)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                {editMode ? "Stop editing" : "Edit"}
+              </button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onDeleteSkill}
+                disabled={deletePending}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {deletePending ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
           ) : (
             <div className="text-sm text-muted-foreground">{detail.editableReason}</div>
           )}
@@ -751,6 +769,7 @@ export function CompanySkills() {
   const [displayedDetail, setDisplayedDetail] = useState<CompanySkillDetail | null>(null);
   const [displayedFile, setDisplayedFile] = useState<CompanySkillFileDetail | null>(null);
   const [scanStatusMessage, setScanStatusMessage] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const parsedRoute = useMemo(() => parseSkillRoute(routePath), [routePath]);
   const routeSkillId = parsedRoute.skillId;
   const selectedPath = parsedRoute.filePath;
@@ -987,6 +1006,39 @@ export function CompanySkills() {
     },
   });
 
+  const deleteSkill = useMutation({
+    mutationFn: () => companySkillsApi.remove(selectedCompanyId!, selectedSkillId!),
+    onSuccess: async (removedSkill) => {
+      const previousSkills = skillsQuery.data ?? [];
+      const remaining = previousSkills.filter((skill) => skill.id !== removedSkill.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.list(selectedCompanyId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.companySkills.detail(selectedCompanyId!, selectedSkillId!) }),
+      ]);
+      setEditMode(false);
+      setDeleteConfirmOpen(false);
+      setDisplayedDetail(null);
+      setDisplayedFile(null);
+      if (remaining[0]) {
+        navigate(skillRoute(remaining[0].id));
+      } else {
+        navigate("/skills");
+      }
+      pushToast({
+        tone: "success",
+        title: "Skill deleted",
+        body: removedSkill.name,
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        tone: "error",
+        title: "Delete failed",
+        body: error instanceof Error ? error.message : "Failed to delete skill.",
+      });
+    },
+  });
+
   if (!selectedCompanyId) {
     return <EmptyState icon={Boxes} message="Select a company to manage skills." />;
   }
@@ -1041,6 +1093,39 @@ export function CompanySkills() {
             </a>
           </div>
           <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          if (deleteSkill.isPending) return;
+          setDeleteConfirmOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Skill?</DialogTitle>
+            <DialogDescription>
+              This removes the skill from this company workspace. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteConfirmOpen(false)}
+              disabled={deleteSkill.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteSkill.mutate()}
+              disabled={deleteSkill.isPending || !activeDetail}
+            >
+              {deleteSkill.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1162,6 +1247,11 @@ export function CompanySkills() {
             installUpdatePending={installUpdate.isPending}
             onSave={() => saveFile.mutate()}
             savePending={saveFile.isPending}
+            onDeleteSkill={() => {
+              if (!activeDetail || deleteSkill.isPending) return;
+              setDeleteConfirmOpen(true);
+            }}
+            deletePending={deleteSkill.isPending}
           />
         </div>
       </div>
