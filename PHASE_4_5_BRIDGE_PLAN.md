@@ -124,6 +124,7 @@ Each generated report/wiki file must include:
   - `video/*`
   - `application/pdf`
   - `text/*`
+  - `text/plain` (`.txt`)
   - `application/json`
   - `text/csv`
   - `application/vnd.ms-excel`
@@ -186,7 +187,7 @@ Each generated report/wiki file must include:
   - 100 MB accepted
   - >100 MB rejected with clear message
 - `audio/*`, `video/*`, `image/*` accepted.
-- `pdf/csv/json/md/xlsx/xlsm/doc/docx` accepted.
+- `pdf/csv/json/md/txt/xlsx/xlsm/doc/docx` accepted.
 - Download endpoint returns correct content headers and file.
 
 ---
@@ -207,3 +208,19 @@ Each generated report/wiki file must include:
 - If needed, a stricter policy mode can remain as optional instance config, but default behavior should match Master CEO authority.
 - This phase is a prerequisite for a healthy Phase 5 (Hermes CEO autonomy) rollout.
 
+---
+
+## 9) MasterCEO Vision Alignment (Dynamic Self-Improving System)
+
+This phase and later phases should preserve one core direction: MasterCEO is a dynamic system that can improve its own workflows, code paths, and decision quality over time.
+
+### Design implications
+- No static strategic lock that prevents adaptive model/provider choice.
+- Decision outcomes (success/failure/cost/latency/quality) are stored for iterative improvement.
+- KB outputs become reusable organizational memory, not one-off artifacts.
+- Safe self-improvement loops are encouraged:
+  - propose improvement
+  - test in scoped/sandboxed mode
+  - evaluate metrics
+  - promote if better and safe
+- Human and Master CEO remain able to intervene/override at any step.
