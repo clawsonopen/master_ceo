@@ -19,6 +19,7 @@ import { ChoosePathButton } from "./PathInstructionsModal";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { DraftInput } from "./agent-config-primitives";
 import { InlineEditor } from "./InlineEditor";
+import { useUiI18n } from "@/i18n/ui";
 
 const PROJECT_STATUSES = [
   { value: "backlog", label: "Backlog" },
@@ -45,6 +46,7 @@ export type ProjectConfigFieldKey =
   | "goals"
   | "execution_workspace_enabled"
   | "execution_workspace_default_mode"
+  | "strategic_checkpoint_mode"
   | "execution_workspace_base_ref"
   | "execution_workspace_branch_template"
   | "execution_workspace_worktree_parent_dir"
@@ -217,6 +219,7 @@ function ArchiveDangerZone({
 }
 
 export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSaveState, onArchive, archivePending }: ProjectPropertiesProps) {
+  const { t } = useUiI18n();
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const [goalOpen, setGoalOpen] = useState(false);
@@ -269,6 +272,12 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
   const isolatedWorkspacesEnabled = experimentalSettings?.enableIsolatedWorkspaces === true;
   const executionWorkspaceDefaultMode =
     executionWorkspacePolicy?.defaultMode === "isolated_workspace" ? "isolated_workspace" : "shared_workspace";
+  const strategicCheckpointMode =
+    executionWorkspacePolicy?.strategicCheckpointMode === "manual_gate"
+      || executionWorkspacePolicy?.strategicCheckpointMode === "qa_gate"
+      || executionWorkspacePolicy?.strategicCheckpointMode === "auto_pass"
+      ? executionWorkspacePolicy.strategicCheckpointMode
+      : "auto_pass";
   const executionWorkspaceStrategy = executionWorkspacePolicy?.workspaceStrategy ?? {
     type: "git_worktree",
     baseRef: "",
@@ -581,6 +590,30 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
               </PopoverContent>
             </Popover>
           )}
+        </PropertyRow>
+        <PropertyRow
+          label={<FieldLabel label={t("project.strategicCheckpoint.label")} state={fieldState("strategic_checkpoint_mode")} />}
+          alignStart
+          valueClassName="space-y-1"
+        >
+          <select
+            data-testid="project-strategic-checkpoint-mode"
+            className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
+            value={strategicCheckpointMode}
+            onChange={(event) =>
+              commitField(
+                "strategic_checkpoint_mode",
+                updateExecutionWorkspacePolicy({ strategicCheckpointMode: event.target.value })!,
+              )}
+            disabled={!(onUpdate || onFieldUpdate)}
+          >
+            <option value="auto_pass">{t("project.strategicCheckpoint.autoPass")}</option>
+            <option value="manual_gate">{t("project.strategicCheckpoint.manualGate")}</option>
+            <option value="qa_gate">{t("project.strategicCheckpoint.qaGate")}</option>
+          </select>
+          <p className="text-[11px] text-muted-foreground">
+            {t("project.strategicCheckpoint.hint")}
+          </p>
         </PropertyRow>
         <PropertyRow label={<FieldLabel label="Created" state="idle" />}>
           <span className="text-sm">{formatDate(project.createdAt)}</span>

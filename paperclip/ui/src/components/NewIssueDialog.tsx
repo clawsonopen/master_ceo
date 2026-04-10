@@ -54,6 +54,7 @@ import { issueStatusText, issueStatusTextDefault, priorityColor, priorityColorDe
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { AgentIcon } from "./AgentIconPicker";
 import { InlineEntitySelector, type InlineEntityOption } from "./InlineEntitySelector";
+import { useUiI18n } from "@/i18n/ui";
 
 const DRAFT_KEY = "paperclip:issue-draft";
 const DEBOUNCE_MS = 800;
@@ -74,6 +75,7 @@ interface IssueDraft {
   executionWorkspaceMode?: string;
   selectedExecutionWorkspaceId?: string;
   useIsolatedExecutionWorkspace?: boolean;
+  strategicCheckpointMode?: string;
 }
 
 type StagedIssueFile = {
@@ -294,6 +296,7 @@ function issueExecutionWorkspaceModeForExistingWorkspace(mode: string | null | u
 }
 
 export function NewIssueDialog() {
+  const { t } = useUiI18n();
   const { newIssueOpen, newIssueDefaults, closeNewIssue } = useDialog();
   const { companies, selectedCompanyId, selectedCompany } = useCompany();
   const queryClient = useQueryClient();
@@ -311,6 +314,7 @@ export function NewIssueDialog() {
   const [assigneeChrome, setAssigneeChrome] = useState(false);
   const [executionWorkspaceMode, setExecutionWorkspaceMode] = useState<string>("shared_workspace");
   const [selectedExecutionWorkspaceId, setSelectedExecutionWorkspaceId] = useState("");
+  const [strategicCheckpointMode, setStrategicCheckpointMode] = useState("project_default");
   const [expanded, setExpanded] = useState(false);
   const [dialogCompanyId, setDialogCompanyId] = useState<string | null>(null);
   const [stagedFiles, setStagedFiles] = useState<StagedIssueFile[]>([]);
@@ -508,6 +512,7 @@ export function NewIssueDialog() {
       assigneeChrome,
       executionWorkspaceMode,
       selectedExecutionWorkspaceId,
+      strategicCheckpointMode,
     });
   }, [
     title,
@@ -522,6 +527,7 @@ export function NewIssueDialog() {
     assigneeChrome,
     executionWorkspaceMode,
     selectedExecutionWorkspaceId,
+    strategicCheckpointMode,
     newIssueOpen,
     scheduleSave,
   ]);
@@ -548,6 +554,7 @@ export function NewIssueDialog() {
       setAssigneeChrome(false);
       setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProject));
       setSelectedExecutionWorkspaceId("");
+      setStrategicCheckpointMode("project_default");
       executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
     } else if (draft && draft.title.trim()) {
       const restoredProjectId = newIssueDefaults.projectId ?? draft.projectId;
@@ -571,6 +578,7 @@ export function NewIssueDialog() {
           ?? (draft.useIsolatedExecutionWorkspace ? "isolated_workspace" : defaultExecutionWorkspaceModeForProject(restoredProject)),
       );
       setSelectedExecutionWorkspaceId(draft.selectedExecutionWorkspaceId ?? "");
+      setStrategicCheckpointMode(draft.strategicCheckpointMode ?? "project_default");
       executionWorkspaceDefaultProjectId.current = restoredProjectId || null;
     } else {
       const defaultProjectId = newIssueDefaults.projectId ?? "";
@@ -585,6 +593,7 @@ export function NewIssueDialog() {
       setAssigneeChrome(false);
       setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProject));
       setSelectedExecutionWorkspaceId("");
+      setStrategicCheckpointMode("project_default");
       executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
     }
   }, [newIssueOpen, newIssueDefaults, orderedProjects]);
@@ -630,6 +639,7 @@ export function NewIssueDialog() {
     setAssigneeChrome(false);
     setExecutionWorkspaceMode("shared_workspace");
     setSelectedExecutionWorkspaceId("");
+    setStrategicCheckpointMode("project_default");
     setExpanded(false);
     setDialogCompanyId(null);
     setStagedFiles([]);
@@ -649,6 +659,7 @@ export function NewIssueDialog() {
     setAssigneeChrome(false);
     setExecutionWorkspaceMode("shared_workspace");
     setSelectedExecutionWorkspaceId("");
+    setStrategicCheckpointMode("project_default");
   }
 
   function discardDraft() {
@@ -680,6 +691,12 @@ export function NewIssueDialog() {
     const executionWorkspaceSettings = executionWorkspacePolicy?.enabled
       ? { mode: requestedExecutionWorkspaceMode }
       : null;
+    const strategicCheckpoint =
+      strategicCheckpointMode === "auto_pass"
+      || strategicCheckpointMode === "manual_gate"
+      || strategicCheckpointMode === "qa_gate"
+        ? { mode: strategicCheckpointMode }
+        : null;
     createIssue.mutate({
       companyId: effectiveCompanyId,
       stagedFiles,
@@ -697,6 +714,7 @@ export function NewIssueDialog() {
         ? { executionWorkspaceId: selectedExecutionWorkspaceId }
         : {}),
       ...(executionWorkspaceSettings ? { executionWorkspaceSettings } : {}),
+      ...(strategicCheckpoint ? { strategicCheckpoint } : {}),
     });
   }
 
@@ -781,6 +799,12 @@ export function NewIssueDialog() {
     experimentalSettings?.enableIsolatedWorkspaces === true
       ? currentProject?.executionWorkspacePolicy ?? null
       : null;
+  const currentProjectStrategicCheckpointMode = currentProject?.executionWorkspacePolicy?.strategicCheckpointMode ?? null;
+  const strategicCheckpointModeLabel = (mode: "auto_pass" | "manual_gate" | "qa_gate") => {
+    if (mode === "manual_gate") return t("issue.strategicCheckpoint.manualGate");
+    if (mode === "qa_gate") return t("issue.strategicCheckpoint.qaGate");
+    return t("issue.strategicCheckpoint.autoPass");
+  };
   const currentProjectSupportsExecutionWorkspace = Boolean(currentProjectExecutionWorkspacePolicy?.enabled);
   const deduplicatedReusableWorkspaces = useMemo(() => {
     const workspaces = reusableExecutionWorkspaces ?? [];
@@ -1138,6 +1162,30 @@ export function NewIssueDialog() {
                   );
                 }}
               />
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 pb-2 shrink-0">
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium">{t("issue.strategicCheckpoint.label")}</div>
+            <select
+              data-testid="issue-strategic-checkpoint-mode"
+              className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+              value={strategicCheckpointMode}
+              onChange={(event) => setStrategicCheckpointMode(event.target.value)}
+            >
+              <option value="project_default">{t("issue.strategicCheckpoint.projectDefault")}</option>
+              <option value="auto_pass">{t("issue.strategicCheckpoint.autoPass")}</option>
+              <option value="manual_gate">{t("issue.strategicCheckpoint.manualGate")}</option>
+              <option value="qa_gate">{t("issue.strategicCheckpoint.qaGate")}</option>
+            </select>
+            <div className="text-[11px] text-muted-foreground">
+              {currentProjectStrategicCheckpointMode
+                ? t("issue.strategicCheckpoint.projectPolicyHint", {
+                  mode: strategicCheckpointModeLabel(currentProjectStrategicCheckpointMode),
+                })
+                : t("issue.strategicCheckpoint.projectPolicyNone")}
             </div>
           </div>
         </div>
