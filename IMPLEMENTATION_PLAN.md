@@ -809,3 +809,22 @@ Full Turkish language support for all UI elements and agent communication.
 ### Residual risks (known, accepted)
 - sqlite-vec may not outperform fallback in tiny smoke datasets; benefit is expected with larger corpora.
 - Full app-wide i18n migration is not complete yet; baseline framework is now in place.
+
+---
+
+## 2026-04-10 Phase 4.5 Bridge Completion Addendum
+
+### Completed (as-built)
+- Router governance now runs in advisory-first mode with Master CEO override authority.
+- Router override traces are persisted into KB decision reports with metadata.
+- Upload/download policy expansion is live:
+  - 100 MB default limit
+  - broad enterprise/media format support including `.txt`
+- Strategic checkpoint UX and API flow are complete:
+  - project-level strategic checkpoint mode selector
+  - issue/workflow-level strategic checkpoint override selector
+  - E2E validation coverage for selector -> API payload flow
+
+### Program status
+- No remaining Phase 4 or Phase 4.5 bridge blockers in current scope.
+- Repository is ready for Phase 5 execution.

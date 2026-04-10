@@ -220,3 +220,18 @@ Do NOT write any code. Analysis only.
 - KB UI regression tests.
 - sqlite-vec benchmark report generated and documented.
 - Shared global i18n provider + utilities introduced for consistent UI localization expansion.
+
+## 2026-04-10 Status Addendum (Phase 4.5 Bridge Closed)
+
+### Bridge completion highlights
+- Router strategy is advisory-first with Master CEO final override authority.
+- KB persistence for router decision reports is active with trace metadata.
+- Expanded file handling (100 MB default + broad formats) is active end-to-end.
+- Strategic checkpoint UX is now configurable at:
+  - project policy level
+  - issue/workflow creation level (override)
+- Playwright E2E added to verify selector -> API payload flow.
+
+### Program state
+- No remaining Phase 4 or Phase 4.5 bridge blockers.
+- Project is ready to start Phase 5.

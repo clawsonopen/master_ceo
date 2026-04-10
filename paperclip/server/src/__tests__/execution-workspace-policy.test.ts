@@ -117,6 +117,7 @@ describe("execution workspace policy helpers", () => {
       parseProjectExecutionWorkspacePolicy({
         enabled: true,
         defaultMode: "isolated",
+        strategicCheckpointMode: "qa_gate",
         workspaceStrategy: {
           type: "git_worktree",
           worktreeParentDir: ".paperclip/worktrees",
@@ -127,6 +128,7 @@ describe("execution workspace policy helpers", () => {
     ).toEqual({
       enabled: true,
       defaultMode: "isolated_workspace",
+      strategicCheckpointMode: "qa_gate",
       workspaceStrategy: {
         type: "git_worktree",
         worktreeParentDir: ".paperclip/worktrees",
