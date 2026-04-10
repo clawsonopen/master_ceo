@@ -10,6 +10,8 @@ import { getActorInfo } from "./authz.js";
 import { logActivity } from "../services/index.js";
 import { forbidden } from "../errors.js";
 import { agentService } from "../services/agents.js";
+import { ensureKnowledgeBaseRuntime } from "../services/knowledge-base/index.js";
+import { normalizeRelativeKbPath, sanitizePathSegment } from "../services/knowledge-base/scopes.js";
 
 const saveApiKeySchema = z.object({
   provider: z.string().trim().min(2).max(64).regex(/^[a-zA-Z0-9_-]+$/),
@@ -22,6 +24,16 @@ const saveApiKeySchema = z.object({
 const routerRecommendationSchema = z.object({
   taskSummary: z.string().optional().nullable(),
   preference: z.enum(["balanced", "quality", "speed", "cost"]).optional(),
+  expandColumns: z.array(z.string().trim().min(1).max(64)).max(24).optional(),
+});
+const routerOverrideSchema = z.object({
+  companyId: z.string().uuid().optional().nullable(),
+  taskSummary: z.string().optional().nullable(),
+  preference: z.enum(["balanced", "quality", "speed", "cost"]).optional(),
+  expandColumns: z.array(z.string().trim().min(1).max(64)).max(24).optional(),
+  selectedProvider: z.string().trim().min(2).max(64),
+  selectedModel: z.string().trim().min(2).max(160),
+  rationale: z.string().trim().max(4000).optional().nullable(),
 });
 const discoveryStartSchema = z.object({
   provider: z.string().trim().min(2).max(64).regex(/^[a-zA-Z0-9_-]+$/),
@@ -33,6 +45,66 @@ const discoveryListQuerySchema = z.object({
 const discoveryPublishParamsSchema = z.object({
   id: z.string().uuid(),
 });
+
+function markdownRow(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  return String(value).replaceAll("|", "\\|");
+}
+
+function buildRouterDecisionMarkdown(input: {
+  createdAtIso: string;
+  actorName: string;
+  taskSummary: string | null;
+  companyScope: string;
+  selectedProvider: string;
+  selectedModel: string;
+  suggestedProvider: string;
+  suggestedModel: string;
+  preference: "balanced" | "quality" | "speed" | "cost";
+  rationale: string | null;
+  tableColumns: string[];
+  candidateTable: Array<Record<string, unknown>>;
+}): string {
+  const tableHeader = `| ${input.tableColumns.join(" | ")} |`;
+  const tableDivider = `| ${input.tableColumns.map(() => "---").join(" | ")} |`;
+  const tableRows = input.candidateTable.map((row) =>
+    `| ${input.tableColumns.map((column) => markdownRow(row[column])).join(" | ")} |`
+  );
+  const fm = [
+    "---",
+    `created_by_agent_name: ${input.actorName}`,
+    "requested_by: master_ceo",
+    `company_scope: ${input.companyScope}`,
+    `created_at: ${input.createdAtIso}`,
+    `updated_at: ${input.createdAtIso}`,
+    `selected_model: ${input.selectedProvider}/${input.selectedModel}`,
+    `suggested_model: ${input.suggestedProvider}/${input.suggestedModel}`,
+    "---",
+    "",
+  ].join("\n");
+
+  return [
+    fm,
+    "# Router Decision Report",
+    "",
+    `- Created At: ${input.createdAtIso}`,
+    `- Requested By: master_ceo`,
+    `- Created By: ${input.actorName}`,
+    `- Preference: ${input.preference}`,
+    `- Task Summary: ${input.taskSummary ?? "-"}`,
+    `- Suggested: ${input.suggestedProvider} / ${input.suggestedModel}`,
+    `- Selected: ${input.selectedProvider} / ${input.selectedModel}`,
+    `- Rationale: ${input.rationale ?? "-"}`,
+    "",
+    "## Candidate Table",
+    "",
+    tableHeader,
+    tableDivider,
+    ...(tableRows.length > 0 ? tableRows : ["| - |"]),
+    "",
+  ].join("\n");
+}
 
 function assertCanManageApiKeys(req: Request) {
   if (req.actor.type !== "board") {
@@ -183,8 +255,117 @@ export function apiKeySettingsRoutes(db: Db) {
     const recommendation = await svc.recommendRouterAssignment({
       taskSummary: req.body.taskSummary ?? null,
       preference: req.body.preference ?? "balanced",
+      expandColumns: req.body.expandColumns ?? [],
     });
     res.json(recommendation);
+  });
+
+  router.post("/settings/router-agent/override", validate(routerOverrideSchema), async (req, res) => {
+    await assertCanReadRuntimeCredentials(req);
+    const recommendation = await svc.recommendRouterAssignment({
+      taskSummary: req.body.taskSummary ?? null,
+      preference: req.body.preference ?? "balanced",
+      expandColumns: req.body.expandColumns ?? [],
+    });
+    const actor = getActorInfo(req);
+    const now = new Date();
+    const companyId = req.body.companyId
+      ?? req.actor.companyId
+      ?? (await svc.listCompanyIds())[0]
+      ?? null;
+    if (!companyId) {
+      throw forbidden("Company context required for override audit");
+    }
+
+    const selected = {
+      provider: req.body.selectedProvider.trim().toLowerCase(),
+      model: req.body.selectedModel.trim(),
+    };
+    const suggestion = recommendation.suggested_model;
+    const rationale = (req.body.rationale ?? "").trim() || null;
+
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "router.decision.override",
+      entityType: "router_assignment",
+      entityId: `${selected.provider}:${selected.model}`,
+      details: {
+        final_decision_by: "master_ceo",
+        selected_model: selected,
+        suggested_model: suggestion,
+        recommendation_table_columns: recommendation.table_columns,
+        task_summary: req.body.taskSummary ?? null,
+        preference: req.body.preference ?? "balanced",
+        rationale,
+      },
+    });
+
+    let reportPath: string | null = null;
+    try {
+      const runtime = await ensureKnowledgeBaseRuntime(db);
+      const yyyy = String(now.getUTCFullYear());
+      const mm = `${now.getUTCMonth() + 1}`.padStart(2, "0");
+      const taskId = sanitizePathSegment(
+        actor.runId ?? `${now.getTime()}`,
+      );
+      const slug = sanitizePathSegment(req.body.taskSummary ?? `${selected.provider}-${selected.model}`);
+      reportPath = normalizeRelativeKbPath(
+        `Global_Holding/wiki/router_decisions/${yyyy}/${mm}/${taskId}-${slug}.md`,
+      );
+
+      const actorName = actor.actorId ?? actor.agentId ?? "system";
+      const markdown = buildRouterDecisionMarkdown({
+        createdAtIso: now.toISOString(),
+        actorName,
+        taskSummary: req.body.taskSummary ?? null,
+        companyScope: "global",
+        selectedProvider: selected.provider,
+        selectedModel: selected.model,
+        suggestedProvider: suggestion.provider,
+        suggestedModel: suggestion.model,
+        preference: req.body.preference ?? "balanced",
+        rationale,
+        tableColumns: recommendation.table_columns,
+        candidateTable: recommendation.candidate_table,
+      });
+      await runtime.fileManager.writeDocument(reportPath, markdown);
+      await runtime.indexer.updateDocument(reportPath);
+      await runtime.fileManager.appendWikiLogEntry({
+        targetRelativePath: reportPath,
+        actorName,
+        action: "created",
+      });
+
+      const indexPath = "Global_Holding/wiki/router_decisions/index.md";
+      const indexLine = `- ${now.toISOString()} | ${actorName} | ${selected.provider}/${selected.model} | ${reportPath}`;
+      let indexContent = "# Router Decision Index\n\n";
+      try {
+        const existing = await runtime.fileManager.readDocument(indexPath);
+        indexContent = existing.content.endsWith("\n")
+          ? existing.content
+          : `${existing.content}\n`;
+      } catch {
+        // keep default initial content
+      }
+      await runtime.fileManager.writeDocument(indexPath, `${indexContent}${indexLine}\n`);
+      await runtime.indexer.updateDocument(indexPath);
+    } catch {
+      reportPath = null;
+    }
+
+    res.json({
+      ok: true,
+      final_decision_by: "master_ceo",
+      selected_model: selected,
+      suggested_model: suggestion,
+      rationale,
+      report_path: reportPath,
+      recommendation,
+    });
   });
 
   router.get("/settings/router-agent/provider-discovery/suggestions", async (req, res) => {

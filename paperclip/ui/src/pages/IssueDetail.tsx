@@ -1121,7 +1121,7 @@ export function IssueDetail() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,application/pdf,text/plain,text/markdown,application/json,text/csv,text/html,.md,.markdown"
+        accept="image/*,audio/*,video/*,application/pdf,text/*,application/json,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroenabled.12,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.md,.markdown,.txt,.csv,.json,.xls,.xlsx,.xlsm,.doc,.docx"
         className="hidden"
         onChange={handleFilePicked}
         multiple

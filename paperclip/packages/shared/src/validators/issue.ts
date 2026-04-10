@@ -36,6 +36,16 @@ export const issueAssigneeAdapterOverridesSchema = z
   })
   .strict();
 
+export const strategicCheckpointModeSchema = z.enum(["auto_pass", "manual_gate", "qa_gate"]);
+
+export const strategicCheckpointConfigSchema = z
+  .object({
+    mode: strategicCheckpointModeSchema.optional(),
+    workflowId: z.string().trim().min(1).max(128).optional().nullable(),
+    note: z.string().trim().max(500).optional().nullable(),
+  })
+  .strict();
+
 export const createIssueSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   projectWorkspaceId: z.string().uuid().optional().nullable(),
@@ -56,6 +66,7 @@ export const createIssueSchema = z.object({
   executionWorkspacePreference: z.enum(ISSUE_EXECUTION_WORKSPACE_PREFERENCES).optional().nullable(),
   executionWorkspaceSettings: issueExecutionWorkspaceSettingsSchema.optional().nullable(),
   labelIds: z.array(z.string().uuid()).optional(),
+  strategicCheckpoint: strategicCheckpointConfigSchema.optional().nullable(),
 });
 
 export type CreateIssue = z.infer<typeof createIssueSchema>;

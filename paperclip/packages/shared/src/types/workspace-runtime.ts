@@ -116,6 +116,7 @@ export interface ExecutionWorkspaceCloseReadiness {
 export interface ProjectExecutionWorkspacePolicy {
   enabled: boolean;
   defaultMode?: ProjectExecutionWorkspaceDefaultMode;
+  strategicCheckpointMode?: "auto_pass" | "manual_gate" | "qa_gate";
   allowIssueOverride?: boolean;
   defaultProjectWorkspaceId?: string | null;
   workspaceStrategy?: ExecutionWorkspaceStrategy | null;

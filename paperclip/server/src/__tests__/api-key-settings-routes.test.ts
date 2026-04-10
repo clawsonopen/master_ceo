@@ -24,6 +24,17 @@ const mockProviderDiscoveryService = vi.hoisted(() => ({
   discover: vi.fn(),
   publish: vi.fn(),
 }));
+const mockKbRuntime = vi.hoisted(() => ({
+  fileManager: {
+    writeDocument: vi.fn().mockResolvedValue({ relativePath: "Global_Holding/wiki/router_decisions/2026/04/sample.md" }),
+    appendWikiLogEntry: vi.fn().mockResolvedValue(undefined),
+    readDocument: vi.fn().mockResolvedValue({ content: "# Router Decision Index\n\n" }),
+  },
+  indexer: {
+    updateDocument: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+const mockEnsureKnowledgeBaseRuntime = vi.hoisted(() => vi.fn(async () => mockKbRuntime));
 
 vi.mock("../services/api-keys.js", () => ({
   apiKeyService: () => mockApiKeyService,
@@ -35,6 +46,10 @@ vi.mock("../services/agents.js", () => ({
 
 vi.mock("../services/provider-discovery.js", () => ({
   providerDiscoveryService: () => mockProviderDiscoveryService,
+}));
+
+vi.mock("../services/knowledge-base/index.js", () => ({
+  ensureKnowledgeBaseRuntime: mockEnsureKnowledgeBaseRuntime,
 }));
 
 vi.mock("../services/index.js", () => ({
@@ -108,6 +123,13 @@ describe("api key settings routes", () => {
       model: "gpt-4.1",
       reason: "test",
       confidence: 0.9,
+      decision_mode: "advisory",
+      final_decision_by: "master_ceo",
+      suggested_model: { provider: "openai", model: "gpt-4.1" },
+      selected_model: null,
+      alternatives: [{ provider: "gemini", model: "gemini-2.5-pro", reason: "alt" }],
+      table_columns: ["provider", "model_id"],
+      candidate_table: [{ provider: "openai", model_id: "gpt-4.1" }],
     });
     mockApiKeyService.remove.mockResolvedValue(true);
     mockApiKeyService.listCompanyIds.mockResolvedValue(["company-1", "company-2"]);
@@ -252,12 +274,41 @@ describe("api key settings routes", () => {
 
     const recRes = await request(app)
       .post("/api/settings/router-agent/recommendation")
-      .send({ taskSummary: "Write code", preference: "quality" });
+      .send({ taskSummary: "Write code", preference: "quality", expandColumns: ["task_risk"] });
     expect(recRes.status).toBe(200);
     expect(mockApiKeyService.recommendRouterAssignment).toHaveBeenCalledWith({
       taskSummary: "Write code",
       preference: "quality",
+      expandColumns: ["task_risk"],
     });
+  });
+
+  it("records override decisions and persists a KB report path", async () => {
+    const app = createApp({
+      type: "agent",
+      source: "agent_key",
+      agentId: "agent-1",
+      companyId: "company-1",
+      runId: "run-123",
+    });
+
+    const res = await request(app)
+      .post("/api/settings/router-agent/override")
+      .send({
+        taskSummary: "Code review with image+tool support",
+        preference: "quality",
+        selectedProvider: "openrouter",
+        selectedModel: "openrouter/auto",
+        rationale: "Master CEO strategic override",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.final_decision_by).toBe("master_ceo");
+    expect(mockApiKeyService.recommendRouterAssignment).toHaveBeenCalled();
+    expect(mockLogActivity).toHaveBeenCalledTimes(1);
+    expect(mockEnsureKnowledgeBaseRuntime).toHaveBeenCalledTimes(1);
+    expect(mockKbRuntime.fileManager.writeDocument).toHaveBeenCalled();
   });
 
   it("supports provider discovery suggestion flow", async () => {

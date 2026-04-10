@@ -30,6 +30,7 @@ import { validate } from "../middleware/validate.js";
 import {
   accessService,
   agentService,
+  approvalService,
   companyService,
   executionWorkspaceService,
   feedbackService,
@@ -50,6 +51,11 @@ import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { shouldWakeAssigneeOnCheckout } from "./issues-checkout-wakeup.js";
 import { isAllowedContentType, MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
 import { queueIssueAssignmentWakeup } from "../services/issue-assignment-wakeup.js";
+import {
+  evaluateStrategicProposal,
+  resolveStrategicCheckpointMode,
+  shouldApplyStrategicCheckpoint,
+} from "../services/strategic-checkpoints.js";
 
 const MAX_ISSUE_COMMENT_LIMIT = 500;
 const updateIssueRouteSchema = updateIssueSchema.extend({
@@ -74,6 +80,7 @@ export function issueRoutes(
   const svc = issueService(db);
   const access = accessService(db);
   const companiesSvc = companyService(db);
+  const approvalsSvc = approvalService(db);
   const heartbeat = heartbeatService(db);
   const feedback = feedbackService(db);
   const instanceSettings = instanceSettingsService(db);
@@ -1061,16 +1068,117 @@ export function issueRoutes(
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     await assertCompanyNotArchived(companyId);
-    if (req.body.assigneeAgentId || req.body.assigneeUserId) {
+    const {
+      strategicCheckpoint: checkpointConfigRaw,
+      ...issueInput
+    } = req.body as typeof req.body & { strategicCheckpoint?: unknown };
+    const checkpointConfig = (checkpointConfigRaw ?? null) as
+      | { mode?: string | null; note?: string | null; workflowId?: string | null }
+      | null;
+
+    if (issueInput.assigneeAgentId || issueInput.assigneeUserId) {
       await assertCanAssignTasks(req, companyId);
     }
 
     const actor = getActorInfo(req);
+    const [company, actorAgent, project] = await Promise.all([
+      companiesSvc.getById(companyId),
+      actor.agentId ? agentsSvc.getById(actor.agentId) : Promise.resolve(null),
+      issueInput.projectId ? projectsSvc.getById(issueInput.projectId) : Promise.resolve(null),
+    ]);
+    const applyCheckpoint = shouldApplyStrategicCheckpoint({
+      actorType: actor.actorType === "agent" ? "agent" : "user",
+      actorRole: actorAgent?.role ?? null,
+      companyType: company?.companyType ?? null,
+    });
+    const projectPolicyMode = project?.executionWorkspacePolicy?.strategicCheckpointMode ?? null;
+    const checkpointMode = applyCheckpoint
+      ? resolveStrategicCheckpointMode({
+        explicitMode: checkpointConfig?.mode ?? null,
+        projectPolicyMode,
+      })
+      : "auto_pass";
+    let checkpointApprovalId: string | null = null;
+    if (applyCheckpoint && checkpointMode !== "auto_pass") {
+      const qaResult = checkpointMode === "qa_gate"
+        ? evaluateStrategicProposal({
+          title: String(issueInput.title ?? ""),
+          description: typeof issueInput.description === "string" ? issueInput.description : null,
+          priority: typeof issueInput.priority === "string" ? issueInput.priority : null,
+        })
+        : null;
+      const payload = {
+        entityType: "issue",
+        mode: checkpointMode,
+        requestedPayload: issueInput,
+        note: checkpointConfig?.note ?? null,
+        workflowId: checkpointConfig?.workflowId ?? null,
+        handoff:
+          qaResult?.handoff
+          ?? {
+            schema: "paperclip.strategic_handoff.v1",
+            status: "needs_human_decision",
+            reason_code: "manual_gate",
+            summary: "Manual strategic checkpoint requires Master CEO review.",
+            checks: [],
+          },
+      } as Record<string, unknown>;
+      const approval = await approvalsSvc.create(companyId, {
+        type: "approve_ceo_strategy",
+        requestedByAgentId: actor.agentId ?? null,
+        payload,
+      });
+      checkpointApprovalId = approval.id;
+
+      if (checkpointMode === "qa_gate" && qaResult) {
+        if (qaResult.decision === "approve") {
+          await approvalsSvc.approve(approval.id, "qa-devils-advocate", qaResult.summary);
+        } else if (qaResult.decision === "bounce") {
+          await approvalsSvc.requestRevision(approval.id, "qa-devils-advocate", qaResult.summary);
+          res.status(202).json({
+            ok: false,
+            queuedForApproval: true,
+            gateMode: checkpointMode,
+            gateDecision: qaResult.decision,
+            approval,
+            handoff: qaResult.handoff,
+          });
+          return;
+        } else {
+          res.status(202).json({
+            ok: true,
+            queuedForApproval: true,
+            gateMode: checkpointMode,
+            gateDecision: qaResult.decision,
+            approval,
+            handoff: qaResult.handoff,
+          });
+          return;
+        }
+      } else {
+        res.status(202).json({
+          ok: true,
+          queuedForApproval: true,
+          gateMode: checkpointMode,
+          gateDecision: "escalate",
+          approval,
+          handoff: payload.handoff,
+        });
+        return;
+      }
+    }
+
     const issue = await svc.create(companyId, {
-      ...req.body,
+      ...issueInput,
       createdByAgentId: actor.agentId,
       createdByUserId: actor.actorType === "user" ? actor.actorId : null,
     });
+    if (checkpointApprovalId) {
+      await issueApprovalsSvc.linkManyForApproval(checkpointApprovalId, [issue.id], {
+        agentId: actor.agentId,
+        userId: actor.actorType === "user" ? actor.actorId : null,
+      });
+    }
 
     await logActivity(db, {
       companyId,
@@ -1084,7 +1192,8 @@ export function issueRoutes(
       details: {
         title: issue.title,
         identifier: issue.identifier,
-        ...(Array.isArray(req.body.blockedByIssueIds) ? { blockedByIssueIds: req.body.blockedByIssueIds } : {}),
+        ...(Array.isArray(issueInput.blockedByIssueIds) ? { blockedByIssueIds: issueInput.blockedByIssueIds } : {}),
+        ...(checkpointApprovalId ? { checkpointApprovalId } : {}),
       },
     });
 

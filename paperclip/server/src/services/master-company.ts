@@ -11,6 +11,7 @@ export const MASTER_CEO_NAME = "Master CEO";
 export const COST_RESEARCH_AGENT_NAME = "Cost & Provider Research Agent";
 export const MODEL_RESEARCH_ROUTER_AGENT_NAME = "Model Research Router Agent";
 export const AI_NEWS_AND_RELEASES_AGENT_NAME = "AI News and Releases Agent";
+export const DEVILS_ADVOCATE_AGENT_NAME = "Devil's Advocate QA Agent";
 
 type SeededMasterHierarchy = {
   companyId: string;
@@ -18,11 +19,13 @@ type SeededMasterHierarchy = {
   costResearchAgentId: string;
   modelResearchRouterAgentId: string;
   aiNewsAndReleasesAgentId: string;
+  devilsAdvocateAgentId: string;
   masterCompanyCreated: boolean;
   masterCeoCreated: boolean;
   costResearchAgentCreated: boolean;
   modelResearchRouterAgentCreated: boolean;
   aiNewsAndReleasesAgentCreated: boolean;
+  devilsAdvocateAgentCreated: boolean;
 };
 
 type MasterHierarchyDb = Pick<Db, "select" | "insert" | "update">;
@@ -148,6 +151,13 @@ const AI_NEWS_AND_RELEASES_CAPABILITIES = [
   "Highlights what changed, why it matters, and recommended follow-up actions for Master CEO.",
 ].join("\n");
 
+const DEVILS_ADVOCATE_CAPABILITIES = [
+  "Performs pre-execution strategic quality checks for Master CEO created goals/issues.",
+  "Can approve, bounce, or escalate strategic plans before worker dispatch.",
+  "Evaluates logical consistency, missing context, and execution risk with compact JSON handoff records.",
+  "Maintains audit-ready reasoning notes for each checkpoint decision.",
+].join("\n");
+
 const MASTER_OPERATIONS_PROJECT_NAME = "Master Operations";
 const AI_NEWS_DAILY_ROUTINE_TITLE = "Daily AI News and Releases Scan";
 const AI_NEWS_DAILY_ROUTINE_CRON = "0 9 * * *";
@@ -161,6 +171,7 @@ const MODEL_RESEARCH_ROUTER_INSTRUCTION_FILE_NAMES = [
   "SKILLS.md",
 ] as const;
 const AI_NEWS_INSTRUCTION_FILE_NAMES = ["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md", "SKILLS.md"] as const;
+const DEVILS_ADVOCATE_INSTRUCTION_FILE_NAMES = ["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md", "SKILLS.md"] as const;
 
 function resolveInstructionFileUrl(folderName: string, fileName: string) {
   return new URL(`../onboarding-assets/${folderName}/${fileName}`, import.meta.url);
@@ -248,13 +259,15 @@ async function ensureMasterSeedInstructionBundles(
     costResearchAgentId: string;
     modelResearchRouterAgentId: string;
     aiNewsAndReleasesAgentId: string;
+    devilsAdvocateAgentId: string;
   },
 ) {
-  const [ceoFiles, masterWorkerFiles, routerFiles, aiNewsFiles] = await Promise.all([
+  const [ceoFiles, masterWorkerFiles, routerFiles, aiNewsFiles, devilsAdvocateFiles] = await Promise.all([
     loadDefaultAgentInstructionsBundle("ceo"),
     loadDefaultAgentInstructionsBundle("master_worker"),
     loadInstructionBundle("model-research-router", MODEL_RESEARCH_ROUTER_INSTRUCTION_FILE_NAMES),
     loadInstructionBundle("ai-news-releases", AI_NEWS_INSTRUCTION_FILE_NAMES),
+    loadInstructionBundle("devils-advocate", DEVILS_ADVOCATE_INSTRUCTION_FILE_NAMES),
   ]);
 
   await materializeManagedBundleForAgent(db, {
@@ -272,6 +285,10 @@ async function ensureMasterSeedInstructionBundles(
   await materializeManagedBundleForAgent(db, {
     agentId: input.aiNewsAndReleasesAgentId,
     files: aiNewsFiles,
+  });
+  await materializeManagedBundleForAgent(db, {
+    agentId: input.devilsAdvocateAgentId,
+    files: devilsAdvocateFiles,
   });
 }
 
@@ -419,6 +436,23 @@ export async function ensureMasterCompanyHierarchy(db: Db): Promise<SeededMaster
       kbAccess: { read: ["global"], write: ["global"], search: ["global"] },
     });
 
+    const devilsAdvocateAgent = await ensureProtectedAgent(tx, {
+      companyId: masterCompany.id,
+      name: DEVILS_ADVOCATE_AGENT_NAME,
+      role: "researcher",
+      title: "Strategic QA / Reviewer",
+      icon: "shield",
+      reportsTo: masterCeo.id,
+      permissions: { canCreateAgents: false },
+      skills: [
+        "strategy_review",
+        "logic_consistency_check",
+        "risk_escalation",
+        "approval_bounce_triage",
+      ],
+      kbAccess: { read: ["global"], write: ["global"], search: ["global"] },
+    });
+
     await tx
       .update(agents)
       .set({
@@ -450,17 +484,34 @@ export async function ensureMasterCompanyHierarchy(db: Db): Promise<SeededMaster
       })
       .where(eq(agents.id, aiNewsAndReleasesAgent.id));
 
+    await tx
+      .update(agents)
+      .set({
+        capabilities: DEVILS_ADVOCATE_CAPABILITIES,
+        adapterConfig: {
+          instructionsBundleMode: "managed",
+          instructionsEntryFile: "AGENTS.md",
+          reviewScope: "strategic_checkpoints",
+          decisionModes: ["approve", "bounce", "escalate"],
+          outputFormat: "hybrid_json",
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, devilsAdvocateAgent.id));
+
     return {
       companyId: masterCompany.id,
       masterCeoId: masterCeo.id,
       costResearchAgentId: costResearchAgent.id,
       modelResearchRouterAgentId: modelResearchRouterAgent.id,
       aiNewsAndReleasesAgentId: aiNewsAndReleasesAgent.id,
+      devilsAdvocateAgentId: devilsAdvocateAgent.id,
       masterCompanyCreated,
       masterCeoCreated: masterCeo.created,
       costResearchAgentCreated: costResearchAgent.created,
       modelResearchRouterAgentCreated: modelResearchRouterAgent.created,
       aiNewsAndReleasesAgentCreated: aiNewsAndReleasesAgent.created,
+      devilsAdvocateAgentCreated: devilsAdvocateAgent.created,
     };
   });
 
@@ -469,6 +520,7 @@ export async function ensureMasterCompanyHierarchy(db: Db): Promise<SeededMaster
     costResearchAgentId: seedResult.costResearchAgentId,
     modelResearchRouterAgentId: seedResult.modelResearchRouterAgentId,
     aiNewsAndReleasesAgentId: seedResult.aiNewsAndReleasesAgentId,
+    devilsAdvocateAgentId: seedResult.devilsAdvocateAgentId,
   });
 
   await ensureAiNewsAgentDefaults(db, {
