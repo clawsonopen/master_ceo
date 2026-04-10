@@ -3,13 +3,21 @@ import type { Db } from "@paperclipai/db";
 import { createGoalSchema, updateGoalSchema } from "@paperclipai/shared";
 import { trackGoalCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
-import { goalService, logActivity } from "../services/index.js";
+import { agentService, approvalService, companyService, goalService, logActivity } from "../services/index.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { getTelemetryClient } from "../telemetry.js";
+import {
+  evaluateStrategicProposal,
+  resolveStrategicCheckpointMode,
+  shouldApplyStrategicCheckpoint,
+} from "../services/strategic-checkpoints.js";
 
 export function goalRoutes(db: Db) {
   const router = Router();
   const svc = goalService(db);
+  const companiesSvc = companyService(db);
+  const agentsSvc = agentService(db);
+  const approvalsSvc = approvalService(db);
 
   router.get("/companies/:companyId/goals", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -32,8 +40,99 @@ export function goalRoutes(db: Db) {
   router.post("/companies/:companyId/goals", validate(createGoalSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const goal = await svc.create(companyId, req.body);
     const actor = getActorInfo(req);
+
+    const {
+      strategicCheckpoint: checkpointConfigRaw,
+      ...goalInput
+    } = req.body as typeof req.body & { strategicCheckpoint?: unknown };
+    const checkpointConfig = (checkpointConfigRaw ?? null) as
+      | { mode?: string | null; note?: string | null; workflowId?: string | null }
+      | null;
+
+    const [company, actorAgent] = await Promise.all([
+      companiesSvc.getById(companyId),
+      actor.agentId ? agentsSvc.getById(actor.agentId) : Promise.resolve(null),
+    ]);
+    const applyCheckpoint = shouldApplyStrategicCheckpoint({
+      actorType: actor.actorType === "agent" ? "agent" : "user",
+      actorRole: actorAgent?.role ?? null,
+      companyType: company?.companyType ?? null,
+    });
+    const checkpointMode = applyCheckpoint
+      ? resolveStrategicCheckpointMode({ explicitMode: checkpointConfig?.mode ?? null })
+      : "auto_pass";
+
+    if (applyCheckpoint && checkpointMode !== "auto_pass") {
+      const qaResult = checkpointMode === "qa_gate"
+        ? evaluateStrategicProposal({
+          title: String(req.body.title ?? ""),
+          description: typeof req.body.description === "string" ? req.body.description : null,
+          priority: null,
+        })
+        : null;
+      const payload = {
+        entityType: "goal",
+        mode: checkpointMode,
+        requestedPayload: goalInput,
+        note: checkpointConfig?.note ?? null,
+        workflowId: checkpointConfig?.workflowId ?? null,
+        handoff:
+          qaResult?.handoff
+          ?? {
+            schema: "paperclip.strategic_handoff.v1",
+            status: "needs_human_decision",
+            reason_code: "manual_gate",
+            summary: "Manual strategic checkpoint requires Master CEO review.",
+            checks: [],
+          },
+      } as Record<string, unknown>;
+      const approval = await approvalsSvc.create(companyId, {
+        type: "approve_ceo_strategy",
+        requestedByAgentId: actor.agentId ?? null,
+        payload,
+      });
+
+      if (checkpointMode === "qa_gate" && qaResult) {
+        if (qaResult.decision === "approve") {
+          await approvalsSvc.approve(approval.id, "qa-devils-advocate", qaResult.summary);
+        } else if (qaResult.decision === "bounce") {
+          await approvalsSvc.requestRevision(approval.id, "qa-devils-advocate", qaResult.summary);
+          res.status(202).json({
+            ok: false,
+            queuedForApproval: true,
+            gateMode: checkpointMode,
+            gateDecision: qaResult.decision,
+            approval,
+            handoff: qaResult.handoff,
+          });
+          return;
+        } else {
+          res.status(202).json({
+            ok: true,
+            queuedForApproval: true,
+            gateMode: checkpointMode,
+            gateDecision: qaResult.decision,
+            approval,
+            handoff: qaResult.handoff,
+          });
+          return;
+        }
+      } else {
+        res.status(202).json({
+          ok: true,
+          queuedForApproval: true,
+          gateMode: checkpointMode,
+          gateDecision: "escalate",
+          approval,
+          handoff: payload.handoff,
+        });
+        return;
+      }
+    }
+
+    const goal = await svc.create(companyId, goalInput);
+
     await logActivity(db, {
       companyId,
       actorType: actor.actorType,

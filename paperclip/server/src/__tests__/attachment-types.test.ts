@@ -3,6 +3,7 @@ import {
   parseAllowedTypes,
   matchesContentType,
   DEFAULT_ALLOWED_TYPES,
+  MAX_ATTACHMENT_BYTES,
 } from "../attachment-types.js";
 
 describe("parseAllowedTypes", () => {
@@ -93,5 +94,11 @@ describe("matchesContentType", () => {
     expect(matchesContentType("application/pdf", patterns)).toBe(true);
     expect(matchesContentType("text/plain", patterns)).toBe(true);
     expect(matchesContentType("application/zip", patterns)).toBe(true);
+  });
+});
+
+describe("attachment defaults", () => {
+  it("defaults max attachment size to 100MB", () => {
+    expect(MAX_ATTACHMENT_BYTES).toBe(100 * 1024 * 1024);
   });
 });

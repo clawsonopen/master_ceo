@@ -30,6 +30,13 @@ export interface RouterRecommendation {
   model: string;
   reason: string;
   confidence: number;
+  decision_mode?: "advisory";
+  final_decision_by?: "master_ceo";
+  suggested_model?: { provider: string; model: string };
+  selected_model?: { provider: string; model: string } | null;
+  alternatives?: Array<{ provider: string; model: string; reason: string }>;
+  table_columns?: string[];
+  candidate_table?: Array<Record<string, string | number | boolean | null>>;
 }
 
 export interface ProviderDiscoverySuggestion {
@@ -78,8 +85,27 @@ export const apiKeysApi = {
   routerRecommendation: (input: {
     taskSummary?: string | null;
     preference?: "balanced" | "quality" | "speed" | "cost";
+    expandColumns?: string[];
   }) =>
     api.post<RouterRecommendation>("/settings/router-agent/recommendation", input),
+  routerOverride: (input: {
+    companyId?: string | null;
+    taskSummary?: string | null;
+    preference?: "balanced" | "quality" | "speed" | "cost";
+    expandColumns?: string[];
+    selectedProvider: string;
+    selectedModel: string;
+    rationale?: string | null;
+  }) =>
+    api.post<{
+      ok: boolean;
+      final_decision_by: "master_ceo";
+      selected_model: { provider: string; model: string };
+      suggested_model: { provider: string; model: string };
+      rationale: string | null;
+      report_path: string | null;
+      recommendation: RouterRecommendation;
+    }>("/settings/router-agent/override", input),
   listProviderDiscoverySuggestions: (provider?: string) =>
     api.get<ProviderDiscoverySuggestion[]>(
       provider

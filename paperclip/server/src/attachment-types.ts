@@ -1,7 +1,7 @@
 /**
  * Shared attachment content-type configuration.
  *
- * By default only image types are allowed.  Set the
+ * By default common media/document types are allowed. Set the
  * `PAPERCLIP_ALLOWED_ATTACHMENT_TYPES` environment variable to a
  * comma-separated list of MIME types or wildcard patterns to expand the
  * allowed set.
@@ -16,22 +16,23 @@
  */
 
 export const DEFAULT_ALLOWED_TYPES: readonly string[] = [
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/webp",
-  "image/gif",
+  "image/*",
+  "audio/*",
+  "video/*",
   "application/pdf",
-  "text/markdown",
-  "text/plain",
+  "text/*",
   "application/json",
   "text/csv",
-  "text/html",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel.sheet.macroenabled.12",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
 /**
  * Parse a comma-separated list of MIME type patterns into a normalised array.
- * Returns the default image-only list when the input is empty or undefined.
+ * Returns the default allowlist when the input is empty or undefined.
  */
 export function parseAllowedTypes(raw: string | undefined): string[] {
   if (!raw) return [...DEFAULT_ALLOWED_TYPES];
@@ -71,4 +72,4 @@ export function isAllowedContentType(contentType: string): boolean {
 }
 
 export const MAX_ATTACHMENT_BYTES =
-  Number(process.env.PAPERCLIP_ATTACHMENT_MAX_BYTES) || 10 * 1024 * 1024;
+  Number(process.env.PAPERCLIP_ATTACHMENT_MAX_BYTES) || 100 * 1024 * 1024;

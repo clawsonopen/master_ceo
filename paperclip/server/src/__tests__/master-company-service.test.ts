@@ -5,6 +5,7 @@ import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.j
 import {
   AI_NEWS_AND_RELEASES_AGENT_NAME,
   COST_RESEARCH_AGENT_NAME,
+  DEVILS_ADVOCATE_AGENT_NAME,
   MASTER_CEO_NAME,
   MASTER_COMPANY_NAME,
   MODEL_RESEARCH_ROUTER_AGENT_NAME,
@@ -44,11 +45,13 @@ describe("ensureMasterCompanyHierarchy", () => {
     expect(first.costResearchAgentCreated).toBe(true);
     expect(first.modelResearchRouterAgentCreated).toBe(true);
     expect(first.aiNewsAndReleasesAgentCreated).toBe(true);
+    expect(first.devilsAdvocateAgentCreated).toBe(true);
     expect(second.masterCompanyCreated).toBe(false);
     expect(second.masterCeoCreated).toBe(false);
     expect(second.costResearchAgentCreated).toBe(false);
     expect(second.modelResearchRouterAgentCreated).toBe(false);
     expect(second.aiNewsAndReleasesAgentCreated).toBe(false);
+    expect(second.devilsAdvocateAgentCreated).toBe(false);
 
     const masterCompany = await db
       .select()
@@ -65,12 +68,13 @@ describe("ensureMasterCompanyHierarchy", () => {
       .from(agents)
       .where(eq(agents.companyId, masterCompany!.id));
 
-    expect(seededAgents).toHaveLength(4);
+    expect(seededAgents).toHaveLength(5);
 
     const masterCeo = seededAgents.find((agent) => agent.name === MASTER_CEO_NAME);
     const costResearchAgent = seededAgents.find((agent) => agent.name === COST_RESEARCH_AGENT_NAME);
     const routerAgent = seededAgents.find((agent) => agent.name === MODEL_RESEARCH_ROUTER_AGENT_NAME);
     const aiNewsAgent = seededAgents.find((agent) => agent.name === AI_NEWS_AND_RELEASES_AGENT_NAME);
+    const devilsAdvocateAgent = seededAgents.find((agent) => agent.name === DEVILS_ADVOCATE_AGENT_NAME);
 
     expect(masterCeo?.isProtected).toBe(true);
     expect(masterCeo?.role).toBe("ceo");
@@ -90,6 +94,11 @@ describe("ensureMasterCompanyHierarchy", () => {
     expect(aiNewsAgent?.reportsTo).toBe(masterCeo?.id);
     expect(aiNewsAgent?.adapterConfig?.instructionsBundleMode).toBe("managed");
     expect(aiNewsAgent?.adapterConfig?.instructionsEntryFile).toBe("AGENTS.md");
+    expect(devilsAdvocateAgent?.isProtected).toBe(true);
+    expect(devilsAdvocateAgent?.permissions?.canCreateAgents).toBe(false);
+    expect(devilsAdvocateAgent?.reportsTo).toBe(masterCeo?.id);
+    expect(devilsAdvocateAgent?.adapterConfig?.instructionsBundleMode).toBe("managed");
+    expect(devilsAdvocateAgent?.adapterConfig?.instructionsEntryFile).toBe("AGENTS.md");
 
     const seededRoutine = await db
       .select()

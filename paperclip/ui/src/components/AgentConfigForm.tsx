@@ -49,6 +49,7 @@ import { shouldShowLegacyWorkingDirectoryField } from "../lib/legacy-agent-confi
 import { listAdapterOptions, listVisibleAdapterTypes } from "../adapters/metadata";
 import { getAdapterLabel } from "../adapters/adapter-display-registry";
 import { useDisabledAdaptersSync } from "../adapters/use-disabled-adapters";
+import { useUiI18n } from "@/i18n/ui";
 
 /* ---- Create mode values ---- */
 
@@ -173,6 +174,7 @@ const claudeThinkingEffortOptions = [
 /* ---- Form ---- */
 
 export function AgentConfigForm(props: AgentConfigFormProps) {
+  const { t } = useUiI18n();
   const { mode, adapterModels: externalModels } = props;
   const isCreate = mode === "create";
   const cards = props.sectionLayout === "cards";
@@ -474,16 +476,49 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             : "balanced",
       }),
     onSuccess: (data) => {
+      const recommendedProvider = data.suggested_model?.provider ?? data.provider;
+      const recommendedModel = data.suggested_model?.model ?? data.model;
       if (isCreate) {
         set!({
-          routerProvider: data.provider,
-          routerModel: data.model,
+          routerProvider: recommendedProvider,
+          routerModel: recommendedModel,
           routerDecisionNote: data.reason,
         });
       } else {
-        mark("adapterConfig", "routerProvider", data.provider);
-        mark("adapterConfig", "routerModel", data.model);
+        mark("adapterConfig", "routerProvider", recommendedProvider);
+        mark("adapterConfig", "routerModel", recommendedModel);
         mark("adapterConfig", "routerDecisionNote", data.reason);
+      }
+    },
+  });
+  const routerOverride = useMutation({
+    mutationFn: async () => {
+      const selectedProvider = currentRouterProvider.trim();
+      const selectedModel = currentRouterModel.trim();
+      if (!selectedProvider || !selectedModel) {
+        throw new Error(t("agent.router.selectProviderModelError"));
+      }
+      return apiKeysApi.routerOverride({
+        companyId: selectedCompanyId ?? null,
+        taskSummary: currentRouterTaskHint || null,
+        preference:
+          currentRouterPreference === "quality" ||
+          currentRouterPreference === "speed" ||
+          currentRouterPreference === "cost"
+            ? currentRouterPreference
+            : "balanced",
+        selectedProvider,
+        selectedModel,
+        rationale: currentRouterDecisionNote || null,
+      });
+    },
+    onSuccess: (data) => {
+      const suffix = data.report_path ? `\n${t("agent.router.kbReportPrefix")}: ${data.report_path}` : "";
+      const note = `${currentRouterDecisionNote || t("agent.router.overrideAppliedNote")}${suffix}`.trim();
+      if (isCreate) {
+        set!({ routerDecisionNote: note });
+      } else {
+        mark("adapterConfig", "routerDecisionNote", note);
       }
     },
   });
@@ -838,17 +873,34 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               <div className="rounded-md border border-border p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-medium text-muted-foreground">Router Agent Assignment</div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => routerRecommendation.mutate()}
-                    disabled={!hasAdapterType || routerRecommendation.isPending || routerCatalog.length === 0}
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    {routerRecommendation.isPending ? "Thinking..." : "Ask Router Agent"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => routerRecommendation.mutate()}
+                      disabled={!hasAdapterType || routerRecommendation.isPending || routerCatalog.length === 0}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {routerRecommendation.isPending ? t("agent.router.thinking") : t("agent.router.ask")}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => routerOverride.mutate()}
+                      disabled={
+                        !hasAdapterType
+                        || routerOverride.isPending
+                        || currentRouterProvider.trim().length === 0
+                        || currentRouterModel.trim().length === 0
+                      }
+                    >
+                      {routerOverride.isPending ? t("agent.router.applyingOverride") : t("agent.router.applyOverride")}
+                    </Button>
+                  </div>
                 </div>
                 <Field
                   label="Provider"
@@ -953,7 +1005,14 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   <p className="text-xs text-destructive">
                     {routerRecommendation.error instanceof Error
                       ? routerRecommendation.error.message
-                      : "Router recommendation failed."}
+                      : t("agent.router.recommendationFailed")}
+                  </p>
+                )}
+                {routerOverride.error && (
+                  <p className="text-xs text-destructive">
+                    {routerOverride.error instanceof Error
+                      ? routerOverride.error.message
+                      : t("agent.router.overrideFailed")}
                   </p>
                 )}
               </div>

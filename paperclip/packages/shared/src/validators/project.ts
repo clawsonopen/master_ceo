@@ -15,6 +15,7 @@ const executionWorkspaceStrategySchema = z
 export const projectExecutionWorkspacePolicySchema = z
   .object({
     enabled: z.boolean(),
+    strategicCheckpointMode: z.enum(["auto_pass", "manual_gate", "qa_gate"]).optional(),
     defaultMode: z.enum(["shared_workspace", "isolated_workspace", "operator_branch", "adapter_default"]).optional(),
     allowIssueOverride: z.boolean().optional(),
     defaultProjectWorkspaceId: z.string().uuid().optional().nullable(),
